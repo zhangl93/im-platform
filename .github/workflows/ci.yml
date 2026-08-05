@@ -54,8 +54,15 @@ jobs:
           -Dflyway.user=root
           -Dflyway.password=root
 
-      - name: Run im-core unit tests
-        run: mvn -B -pl im-core test
+      # `install`(不是 `test`)——`im-gateway` 对 im-core 有一个 test-scope 依赖(见
+      # im-gateway/pom.xml 里的注释:只是为了让 reactor 按依赖图把 im-core 排在前面构建,
+      # GatewayCrashRecoveryIT 要拿 im-core.jar 起子进程),Maven 解析这个依赖时需要在本地
+      # 仓库里真的找到 im-core 的 jar。本地开发一直是先 `mvn test` 验证测试全过、再单独
+      # `mvn install -DskipTests` 装包,两步分开是为了跑测试的时候能看到失败详情;CI 里
+      # 用一次 `install`(不跳过测试)等价地把两件事都做了,省一步,失败了一样能在这一步的
+      # 日志里看到是测试挂了还是打包挂了。
+      - name: Build and test im-core
+        run: mvn -B -pl im-core install
 
       - name: Build im-gateway
         run: mvn -B -pl im-gateway install -DskipTests
