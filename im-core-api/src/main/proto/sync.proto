@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package im.platform.sync;
+
+option java_package = "com.im.platform.sync.grpc";
+option java_multiple_files = true;
+
+service SyncService {
+  // 客户端携带自己上次同步到的 seq,拉取增量更新
+  rpc PullUpdates(PullUpdatesRequest) returns (UpdatesResponse);
+}
+
+message PullUpdatesRequest {
+  int64 user_id = 1;
+  int64 last_seq = 2; // 客户端本地记录的同步位点
+}
+
+message UpdateEvent {
+  int64 seq = 1;
+  int32 event_type = 2; // NEW_MESSAGE / GROUP_CHANGED / PROFILE_CHANGED ...
+  bytes payload = 3;
+}
+
+message UpdatesResponse {
+  repeated UpdateEvent updates = 1;
+  int64 new_seq = 2; // 客户端需要保存,下次同步用
+}

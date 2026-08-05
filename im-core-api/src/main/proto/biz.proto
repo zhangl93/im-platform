@@ -1,0 +1,249 @@
+syntax = "proto3";
+
+package im.platform.biz;
+
+import "common.proto";
+
+option java_package = "com.im.platform.biz.grpc";
+option java_multiple_files = true;
+
+service UserService {
+  rpc GetUser(GetUserRequest) returns (UserInfo);
+  rpc UpdateProfile(UpdateProfileRequest) returns (im.platform.common.Empty);
+  rpc BlockUser(BlockUserRequest) returns (im.platform.common.Empty); // 触发领域事件 UserBlockedEvent
+  rpc GetContacts(GetContactsRequest) returns (ContactList); // 好友列表(不是任意联系人,是已同意的好友关系)
+  rpc SendFriendRequest(SendFriendRequestRequest) returns (SendFriendRequestResponse);
+  rpc HandleFriendRequest(HandleFriendRequestRequest) returns (im.platform.common.Empty);
+  rpc GetFriendRequests(GetFriendRequestsRequest) returns (FriendRequestList);
+  rpc RemoveFriend(RemoveFriendRequest) returns (im.platform.common.Empty);
+}
+
+service GroupService {
+  rpc CreateGroup(CreateGroupRequest) returns (GroupInfo);
+  rpc TransferOwner(TransferOwnerRequest) returns (im.platform.common.Empty); // 核心领域规则:群主转让校验
+  rpc AddMember(AddMemberRequest) returns (im.platform.common.Empty);         // 校验成员上限、拉黑关系等不变量
+  rpc RemoveMember(RemoveMemberRequest) returns (im.platform.common.Empty);
+  rpc UpdateMemberRole(UpdateMemberRoleRequest) returns (im.platform.common.Empty);
+  rpc GetGroupInfo(GetGroupInfoRequest) returns (GroupInfo);
+  // 用户自己申请入群。join_mode=OPEN 直接进群(joined_immediately=true);
+  // APPROVAL 模式下建一条待审批申请,需要管理员走 HandleJoinRequest。
+  rpc RequestJoinGroup(RequestJoinGroupRequest) returns (RequestJoinGroupResponse);
+  rpc HandleJoinRequest(HandleJoinRequestRequest) returns (im.platform.common.Empty);
+  rpc GetJoinRequests(GetJoinRequestsRequest) returns (GroupJoinRequestList);
+  rpc UpdateJoinMode(UpdateJoinModeRequest) returns (im.platform.common.Empty); // 仅群主可改
+  rpc UpdateGroupMuteAll(UpdateGroupMuteAllRequest) returns (im.platform.common.Empty); // 全员禁言开关
+  rpc MuteMember(MuteMemberRequest) returns (im.platform.common.Empty); // muted_until=0 表示解除禁言
+}
+
+message GetUserRequest {
+  int64 user_id = 1;
+}
+
+// 枚举顺序与 im-biz 领域层 com.im.platform.biz.domain.user.UserStatus 保持一致(靠约定,不是靠代码强绑定),
+// UserGrpcService 里用 ordinal 直接映射,改动任一边都要同步改另一边。
+enum UserStatus {
+  NORMAL = 0;
+  BLOCKED = 1;
+  DEACTIVATED = 2;
+}
+
+message UserInfo {
+  int64 user_id = 1;
+  string nickname = 2;
+  string avatar = 3;
+  UserStatus status = 4;
+  // 扩展字段,业务自定义属性(通常是 JSON 字符串),IM 核心原样存取、不解析内容。
+  string ex = 5;
+}
+
+message UpdateProfileRequest {
+  int64 user_id = 1;
+  string nickname = 2;
+  string avatar = 3;
+  string ex = 4;
+}
+
+message BlockUserRequest {
+  int64 user_id = 1;
+  int64 target_user_id = 2;
+}
+
+message GetContactsRequest {
+  int64 user_id = 1;
+  im.platform.common.PageRequest page = 2;
+}
+
+message ContactInfo {
+  UserInfo user = 1;
+  string remark = 2;   // 这个用户给对方起的备注名,只在自己这一侧生效
+  int64 friend_since = 3;
+}
+
+message ContactList {
+  repeated ContactInfo contacts = 1;
+  string next_page_token = 2;
+}
+
+// 枚举顺序与 im-biz 领域层 com.im.platform.biz.domain.friend.FriendRequestStatus 保持一致。
+enum FriendRequestStatus {
+  PENDING = 0;
+  ACCEPTED = 1;
+  REJECTED = 2;
+}
+
+message SendFriendRequestRequest {
+  int64 from_user_id = 1;
+  int64 to_user_id = 2;
+  string greeting = 3;
+}
+
+message SendFriendRequestResponse {
+  int64 request_id = 1;
+}
+
+message HandleFriendRequestRequest {
+  int64 request_id = 1;
+  int64 operator_user_id = 2; // 必须是这条申请的 to_user_id 本人
+  bool accept = 3;
+}
+
+message GetFriendRequestsRequest {
+  int64 user_id = 1;
+  bool incoming = 2; // true = 别人发给我的申请,false = 我发出去的申请
+}
+
+message FriendRequestInfo {
+  int64 request_id = 1;
+  int64 from_user_id = 2;
+  int64 to_user_id = 3;
+  string greeting = 4;
+  FriendRequestStatus status = 5;
+  int64 created_at = 6;
+  int64 handled_at = 7; // 待处理时为 0
+}
+
+message FriendRequestList {
+  repeated FriendRequestInfo requests = 1;
+}
+
+message RemoveFriendRequest {
+  int64 user_id = 1;
+  int64 friend_id = 2;
+}
+
+message CreateGroupRequest {
+  int64 owner_id = 1;
+  string group_name = 2;
+  string ex = 3;
+}
+
+message GroupInfo {
+  int64 group_id = 1;
+  string group_name = 2;
+  int64 owner_id = 3;
+  int32 member_count = 4;
+  // 扩展字段,业务自定义属性(通常是 JSON 字符串),IM 核心原样存取、不解析内容。
+  string ex = 5;
+  GroupJoinMode join_mode = 6;
+  bool group_muted = 7;
+}
+
+// 枚举顺序与 im-biz 领域层 com.im.platform.biz.domain.group.GroupJoinMode 保持一致。
+enum GroupJoinMode {
+  OPEN = 0;
+  APPROVAL = 1;
+}
+
+message TransferOwnerRequest {
+  int64 group_id = 1;
+  int64 operator_id = 2;   // 当前群主
+  int64 new_owner_id = 3;
+}
+// 领域规则(在 Group 聚合根内部校验,不在接口层):
+// - operator 必须是当前 owner
+// - new_owner 必须是群成员
+// - 转让后原 owner 降级为普通管理员或成员(按业务规则)
+
+message AddMemberRequest {
+  int64 group_id = 1;
+  int64 operator_id = 2;
+  int64 target_user_id = 3;
+}
+
+message RemoveMemberRequest {
+  int64 group_id = 1;
+  int64 operator_id = 2;
+  int64 target_user_id = 3;
+}
+
+message UpdateMemberRoleRequest {
+  int64 group_id = 1;
+  int64 operator_id = 2;
+  int64 target_user_id = 3;
+  int32 role = 4; // OWNER / ADMIN / MEMBER
+}
+
+message GetGroupInfoRequest {
+  int64 group_id = 1;
+}
+
+message RequestJoinGroupRequest {
+  int64 group_id = 1;
+  int64 user_id = 2;
+  string greeting = 3;
+}
+
+message RequestJoinGroupResponse {
+  bool joined_immediately = 1; // true: 已直接加入(OPEN 模式或已是成员),request_id 无意义
+  int64 request_id = 2;        // joined_immediately=false 时,新建或已存在的待处理申请ID(幂等)
+}
+
+message HandleJoinRequestRequest {
+  int64 request_id = 1;
+  int64 operator_id = 2; // 必须是目标群的 OWNER 或 ADMIN
+  bool accept = 3;
+}
+
+message GetJoinRequestsRequest {
+  int64 group_id = 1;
+}
+
+// 枚举顺序与 im-biz 领域层 com.im.platform.biz.domain.group.GroupJoinRequestStatus 保持一致。
+enum GroupJoinRequestStatus {
+  JOIN_REQUEST_PENDING = 0;
+  JOIN_REQUEST_ACCEPTED = 1;
+  JOIN_REQUEST_REJECTED = 2;
+}
+
+message GroupJoinRequestInfo {
+  int64 request_id = 1;
+  int64 group_id = 2;
+  int64 user_id = 3;
+  string greeting = 4;
+  GroupJoinRequestStatus status = 5;
+  int64 created_at = 6;
+  int64 handled_at = 7; // 待处理时为 0
+}
+
+message GroupJoinRequestList {
+  repeated GroupJoinRequestInfo requests = 1;
+}
+
+message UpdateJoinModeRequest {
+  int64 group_id = 1;
+  int64 operator_id = 2; // 仅当前群主
+  GroupJoinMode join_mode = 3;
+}
+
+message UpdateGroupMuteAllRequest {
+  int64 group_id = 1;
+  int64 operator_id = 2; // OWNER 或 ADMIN
+  bool muted = 3;
+}
+
+message MuteMemberRequest {
+  int64 group_id = 1;
+  int64 operator_id = 2;    // OWNER 或 ADMIN,不能禁言 OWNER 本人
+  int64 target_user_id = 3;
+  int64 muted_until = 4;    // 毫秒时间戳,0 表示解除禁言
+}

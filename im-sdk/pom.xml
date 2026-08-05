@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>com.im.platform</groupId>
+    <artifactId>im-platform</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <relativePath>../pom.xml</relativePath>
+  </parent>
+
+  <artifactId>im-sdk</artifactId>
+  <packaging>jar</packaging>
+
+  <name>im-sdk</name>
+  <description>
+    给业务后端用的瘦客户端。业务系统不需要理解 im-core 的内部实现,
+    引入这个 jar、拿到 im-core 的 host:port,就能发消息/建群/查用户/查在线状态/发文件上传凭证。
+    对应文档里"业务层面通过 SDK + 配置的回调地址接入"的 SDK 那一半;回调地址是业务在自己
+    系统里实现,配置进 im-core 的 application.yml(见 im-core 的 im.callback.hooks.*)。
+  </description>
+
+  <dependencies>
+    <dependency>
+      <groupId>com.im.platform</groupId>
+      <artifactId>im-core-api</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.grpc</groupId>
+      <artifactId>grpc-netty-shaded</artifactId>
+    </dependency>
+  </dependencies>
+</project>

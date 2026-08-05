@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package im.platform.common;
+
+option java_package = "com.im.platform.common.protocol.grpc";
+option java_multiple_files = true;
+
+// 各服务共享的空返回值,避免每个 proto 文件重复定义。
+message Empty {
+}
+
+// 通用分页请求参数。
+message PageRequest {
+  int32 page_size = 1;
+  string page_token = 2; // 游标分页,不用 offset,避免深分页问题
+}

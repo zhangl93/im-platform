@@ -1,0 +1,85 @@
+syntax = "proto3";
+
+package im.platform.session;
+
+import "common.proto";
+
+option java_package = "com.im.platform.session.grpc";
+option java_multiple_files = true;
+
+service SessionService {
+  // 建立连接后的密钥协商(对应 MTProto 的 DH 交换)
+  rpc NegotiateKey(NegotiateKeyRequest) returns (NegotiateKeyResponse);
+  // 登录鉴权,返回 session token
+  rpc Authenticate(AuthRequest) returns (AuthResponse);
+  // 校验现有会话是否有效(bff 每次转发前调用,或做本地缓存校验)
+  rpc ValidateSession(ValidateSessionRequest) returns (ValidateSessionResponse);
+  // 连接断开时清理状态
+  rpc CloseSession(CloseSessionRequest) returns (im.platform.common.Empty);
+  // 业务后端(持有 app_key/app_secret,通过 im-sdk 直连 im-core,不经过 gateway)用这个换一个
+  // "登录凭证",再把凭证下发给自己的客户端,客户端拿它填 AuthRequest.encrypted_credential 来登录。
+  // im-core 自己签发、自己核验,不做用户名/密码这类具体认证方式——那是业务系统的事。
+  rpc IssueUserCredential(IssueUserCredentialRequest) returns (IssueUserCredentialResponse);
+}
+
+message NegotiateKeyRequest {
+  bytes client_public_key = 1;
+  string device_id = 2;
+  // 客户端准入凭证(App 级共享密钥,不是用户凭证)。gateway 在转发给 im-core 之前先校验,
+  // 没在白名单里直接拒绝握手,不占用后面的 X25519/gRPC 开销。没配置白名单时默认放行,
+  // 不影响本地开发/现有测试工具。
+  string app_key = 3;
+}
+
+message NegotiateKeyResponse {
+  int64 auth_key_id = 1;
+  bytes server_public_key = 2;
+  // 只在 im-core -> im-gateway 这一段内部调用里有值,gateway 算完连接密钥后必须从
+  // 转发给客户端的响应里剥掉这个字段——绝不能把派生出来的对称密钥发给客户端本身。
+  bytes derived_key = 3;
+  // Ed25519(identity_private_key, client_public_key || server_public_key) 的签名。
+  // 客户端用出厂内置的 identity 公钥(pinning,不是通过这条连接获取的)校验这个签名,
+  // 校验通过才能信任 server_public_key、才能拿它去算共享密钥——防止中间人在
+  // gateway 和客户端之间替换掉 server_public_key。这个字段 gateway 会原样转发,不剥。
+  bytes signature = 4;
+}
+
+message AuthRequest {
+  string device_id = 1;
+  bytes encrypted_credential = 2;
+  string client_version = 3;
+  // NegotiateKey 阶段分配的 auth_key_id,gateway 转发时从这条连接的密钥上下文里带过来,
+  // 记录"这个 session 是用哪把连接密钥建立的",供审计/多端管理用。
+  int64 auth_key_id = 4;
+}
+
+message AuthResponse {
+  int64 user_id = 1;
+  string session_token = 2;
+  int64 expire_at = 3;
+}
+
+message ValidateSessionRequest {
+  string session_token = 1;
+}
+
+message ValidateSessionResponse {
+  bool valid = 1;
+  int64 user_id = 2;
+}
+
+message CloseSessionRequest {
+  string session_token = 1;
+}
+
+message IssueUserCredentialRequest {
+  string app_key = 1;
+  string app_secret = 2; // 内网直连调用,先不做额外签名(跟 im-sdk 其它调用同一个信任边界)
+  int64 user_id = 3;
+  int64 expire_seconds = 4; // <=0 时用服务端默认值
+}
+
+message IssueUserCredentialResponse {
+  bytes credential = 1; // 原样填进客户端 AuthRequest.encrypted_credential
+  int64 expire_at = 2;
+}

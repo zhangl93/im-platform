@@ -1,0 +1,84 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: im-core
+  cloud:
+    nacos:
+      discovery:
+        server-addr: 127.0.0.1:8848
+  datasource:
+    # characterEncoding 只能填 Java 认识的字符集名字(UTF-8),不能直接填 "utf8mb4"——
+    # 那是 MySQL 自己的编码别名,Java 的 String.getBytes(charset) 不认识,会直接抛
+    # UnsupportedEncodingException。真正决定是不是 4 字节 utf8mb4(能不能存 emoji)的是
+    # 表/列的字符集定义(见 V1__init_schema.sql 里每张表的 DEFAULT CHARSET=utf8mb4),
+    # 连接层用标准 UTF-8 正确透传就行。
+    url: jdbc:mysql://127.0.0.1:3306/im_core?useUnicode=true&characterEncoding=UTF-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    username: root
+    password: root
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      # 默认 10 太小——网关批量鉴权时(比如压测/大量客户端集中重连)Authenticate 会短时间内
+      # 发起大量并发查询,连接数不够只是排队变慢,但排队本身会在网关侧放大成"认证超时",
+      # 加大池子比让每次鉴权去抢 10 个连接更合理,单条主键查询很快,加大池子成本很低。
+      maximum-pool-size: 50
+  flyway:
+    enabled: true # 默认就是 true,显式写出来方便看
+    locations: classpath:db/migration
+  data:
+    redis:
+      host: 127.0.0.1
+      port: 6379
+      database: 0
+    # 消息存储固定用 MongoDB(见 MongoMessageStore),启动就要连,MongoDB 没在跑会导致
+    # 消息收发失败——跟上面 MySQL 一样是必需依赖,不是可选项。
+    mongodb:
+      uri: mongodb://127.0.0.1:27017/im_core
+
+grpc:
+  server:
+    port: 9080
+
+dfs:
+  minio:
+    endpoint: http://127.0.0.1:9000
+    access-key: minioadmin
+    secret-key: minioadmin
+    bucket: im-platform
+
+# 业务系统通过这里接管 IM 核心的扩展点。没配 URL 或 enabled=false 的钩子,
+# 相当于业务没接管,IM 核心直接放行/跳过通知,不影响主链路。
+im:
+  session:
+    # 业务后端调 IssueUserCredential 换登录凭证用的 app_key:app_secret 配对,逗号分隔多个。
+    # 留空 = 不启用真实鉴权,Authenticate 退回到"直接把 encrypted_credential 当 user_id 解析"
+    # 这种本地开发/现有测试脚本一直在用的行为——部署到生产环境前必须显式配置。
+    app-credentials: "" # 形如 "app1:secret1,app2:secret2"
+  callback:
+    hooks:
+      before-send-message:
+        enabled: false
+        url: http://127.0.0.1:8000/im-callback/before-send-message
+        fail-closed: false
+        timeout-millis: 3000
+      after-send-message:
+        enabled: false
+        url: http://127.0.0.1:8000/im-callback/after-send-message
+        fail-closed: false
+        timeout-millis: 3000
+      after-user-blocked:
+        enabled: false
+        url: http://127.0.0.1:8000/im-callback/after-user-blocked
+        fail-closed: false
+        timeout-millis: 3000
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus

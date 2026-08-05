@@ -1,0 +1,69 @@
+syntax = "proto3";
+
+package im.platform.common;
+
+option java_package = "com.im.platform.common.protocol.grpc";
+option java_multiple_files = true;
+
+// gateway <-> 客户端的方法调用信封。EncryptedFrame 解密之后的明文就是这个消息序列化后的字节
+// (NegotiateKey 这一次例外,帧本身不加密,payload 直接是某个具体 Request 的字节,不经过信封包装,
+// 因为握手时还没有密钥)。
+//
+// method_id 的分配约定(网关侧路由用,内部 gRPC 服务本身不需要关心):
+//   1001~1099 session, 2001~2099 biz.user, 2101~2199 biz.group,
+//   3001~3099 msg, 4001~4099 sync, 5001~5099 status, 6001~6099 dfs,
+//   9001~9099 网关控制帧(心跳、ACK 等,纯本地处理,不转发给 im-core)。
+message GatewayRequest {
+  int32 method_id = 1;
+  bytes payload = 2; // 具体 service 某个 Request 消息序列化后的字节
+}
+
+message GatewayResponse {
+  int32 status_code = 1; // 0=OK,非0 对应 io.grpc.Status.Code 的 value()
+  string error_message = 2;
+  bytes payload = 3; // status_code=0 时是具体 Response 消息序列化后的字节,否则为空
+}
+
+// 客户端 -> 服务端方向永远是 GatewayRequest,不会有歧义。
+// 服务端 -> 客户端方向有两种可能:对客户端某次请求的 GatewayResponse 回复,或者服务端
+// 主动推送的消息(PushMessage,对应不了任何一次客户端请求)。用 oneof 显式区分,
+// 客户端收到帧解密后先按 ServerFrame 解析,再看 body 里到底是哪一个,不用靠"猜"或者时序假设
+// ——这条连接上请求/响应和推送是完全异步交织的,客户端不能假设"我刚发的请求,下一帧肯定是它的响应"。
+message ServerFrame {
+  oneof body {
+    GatewayResponse response = 1;
+    PushMessage push = 2;
+  }
+}
+
+// method_id = 9001,心跳。客户端定期发,防止 IdleStateHandler 判定连接空闲踢线。
+message HeartbeatRequest {
+  int64 client_time = 1;
+}
+
+message HeartbeatResponse {
+  int64 server_time = 1;
+}
+
+// method_id = 9002,客户端确认收到一条推送消息(见"消息推送路由"里 PushMessage 的投递)。
+message AckRequest {
+  int64 message_id = 1;
+}
+
+message AckResponse {
+  bool ok = 1;
+}
+
+// im-core 通过 Redis Pub/Sub 广播给所有 gateway 实例,gateway 本地 ChannelRegistry
+// 命中 target_user_id 才会真正推给客户端(见 PushRouter)。这个消息本身走 Redis,不走
+// GatewayRequest/GatewayResponse 信封,但推给客户端时复用同一个 EncryptedFrame 加密帧格式,
+// method_id 固定用 9003,客户端收到后按 PushMessage 反序列化并触发 AckRequest。
+message PushMessage {
+  int64 target_user_id = 1;
+  int64 message_id = 2;
+  int64 chat_id = 3;
+  int64 sender_id = 4;
+  bytes content = 5;
+  int32 msg_type = 6;
+  int64 server_time = 7;
+}

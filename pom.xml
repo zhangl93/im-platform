@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>com.im.platform</groupId>
+  <artifactId>im-platform</artifactId>
+  <version>1.0.0-SNAPSHOT</version>
+  <packaging>pom</packaging>
+
+  <name>im-platform</name>
+  <description>
+    IM 系统父工程。两个部署单元:im-gateway(连接层,独立部署,内含 TL/AES 协议编解码和方法路由)+
+    im-core(IM 核心域,单体,对内合并了原来 session/biz/msg/sync/status/idgen/dfs 七个服务;
+    bff"协议翻译"的职责由 im-gateway 的 MethodRegistry 直接承担)。业务系统通过
+    im-sdk 和 im-core 暴露的回调钩子接入,不需要理解 IM 内部实现。
+  </description>
+
+  <modules>
+    <module>im-bom</module>
+    <module>im-common</module>
+    <module>im-gateway</module>
+    <module>im-core-api</module>
+    <module>im-core</module>
+    <module>im-sdk</module>
+  </modules>
+
+  <properties>
+    <java.version>17</java.version>
+    <maven.compiler.source>17</maven.compiler.source>
+    <maven.compiler.target>17</maven.compiler.target>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+    <spring-boot.version>3.2.5</spring-boot.version>
+    <spring-cloud.version>2023.0.1</spring-cloud.version>
+    <spring-cloud-alibaba.version>2023.0.1.0</spring-cloud-alibaba.version>
+    <grpc.version>1.62.2</grpc.version>
+    <protobuf.version>3.25.3</protobuf.version>
+    <mybatis-plus.version>3.5.7</mybatis-plus.version>
+    <shardingsphere.version>5.4.1</shardingsphere.version>
+    <netty.version>4.1.109.Final</netty.version>
+
+    <os-maven-plugin.version>1.7.1</os-maven-plugin.version>
+    <protobuf-maven-plugin.version>0.6.1</protobuf-maven-plugin.version>
+    <jacoco-maven-plugin.version>0.8.11</jacoco-maven-plugin.version>
+  </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>com.im.platform</groupId>
+        <artifactId>im-bom</artifactId>
+        <version>${project.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <build>
+    <!-- os-maven-plugin 在 validate 阶段探测 os.detected.classifier,
+         protobuf-maven-plugin 用它来挑选对应平台的 protoc / grpc-java 插件可执行文件。
+         声明在这里,所有子模块都能继承到,不用每个用到 proto 的模块重复声明。 -->
+    <extensions>
+      <extension>
+        <groupId>kr.motd.maven</groupId>
+        <artifactId>os-maven-plugin</artifactId>
+        <version>${os-maven-plugin.version}</version>
+      </extension>
+    </extensions>
+
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-compiler-plugin</artifactId>
+          <configuration>
+            <source>${java.version}</source>
+            <target>${java.version}</target>
+            <encoding>UTF-8</encoding>
+          </configuration>
+        </plugin>
+        <plugin>
+          <groupId>org.springframework.boot</groupId>
+          <artifactId>spring-boot-maven-plugin</artifactId>
+          <version>${spring-boot.version}</version>
+          <executions>
+            <execution>
+              <goals>
+                <goal>repackage</goal>
+              </goals>
+            </execution>
+          </executions>
+        </plugin>
+        <plugin>
+          <groupId>org.xolstice.maven.plugins</groupId>
+          <artifactId>protobuf-maven-plugin</artifactId>
+          <version>${protobuf-maven-plugin.version}</version>
+          <configuration>
+            <protocArtifact>com.google.protobuf:protoc:${protobuf.version}:exe:${os.detected.classifier}</protocArtifact>
+            <pluginId>grpc-java</pluginId>
+            <pluginArtifact>io.grpc:protoc-gen-grpc-java:${grpc.version}:exe:${os.detected.classifier}</pluginArtifact>
+          </configuration>
+        </plugin>
+        <plugin>
+          <groupId>org.jacoco</groupId>
+          <artifactId>jacoco-maven-plugin</artifactId>
+          <version>${jacoco-maven-plugin.version}</version>
+        </plugin>
+        <!-- 默认 Maven 内置的 surefire 版本(2.12.4)比 JUnit 5 早得多,识别不了 Jupiter 测试类,
+             会直接 "Tests run: 0" 悄悄跳过——这里不继承 spring-boot-starter-parent(只 import 了
+             spring-boot-dependencies 这个 BOM),所以 surefire 版本要自己管,不会像标准 Spring Boot
+             项目那样自动到位。 -->
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-surefire-plugin</artifactId>
+          <version>3.2.5</version>
+        </plugin>
+        <!-- 集成测试(*IT.java)走 failsafe,绑定在 integration-test/verify 阶段,不是 package——
+             mvn clean package 不会碰到它,不需要 Docker MySQL/Redis 也能一键构建;
+             要跑集成测试得显式 mvn verify(或 mvn clean verify)。 -->
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-failsafe-plugin</artifactId>
+          <version>3.2.5</version>
+          <executions>
+            <execution>
+              <goals>
+                <goal>integration-test</goal>
+                <goal>verify</goal>
+              </goals>
+            </execution>
+          </executions>
+        </plugin>
+      </plugins>
+    </pluginManagement>
+  </build>
+</project>

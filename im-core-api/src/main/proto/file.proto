@@ -1,0 +1,46 @@
+syntax = "proto3";
+
+package im.platform.dfs;
+
+option java_package = "com.im.platform.dfs.grpc";
+option java_multiple_files = true;
+
+service FileService {
+  rpc RequestUpload(UploadRequest) returns (UploadTicket);   // 返回 MinIO 预签名URL或分片上传凭证
+  rpc CompleteUpload(CompleteUploadRequest) returns (FileInfo);
+  rpc GetDownloadUrl(GetDownloadUrlRequest) returns (DownloadUrlResponse);
+}
+
+message UploadRequest {
+  int64 owner_id = 1;
+  string file_name = 2;
+  int64 file_size = 3;
+  string content_type = 4;
+}
+
+message UploadTicket {
+  int64 file_id = 1;
+  string upload_url = 2; // 预签名 URL,客户端直传对象存储,不经过本服务转发文件流
+  int64 expire_at = 3;
+}
+
+message CompleteUploadRequest {
+  int64 file_id = 1;
+  string etag = 2;
+}
+
+message FileInfo {
+  int64 file_id = 1;
+  string file_name = 2;
+  int64 file_size = 3;
+  string content_type = 4;
+}
+
+message GetDownloadUrlRequest {
+  int64 file_id = 1;
+}
+
+message DownloadUrlResponse {
+  string download_url = 1;
+  int64 expire_at = 2;
+}

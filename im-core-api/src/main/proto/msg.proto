@@ -1,0 +1,104 @@
+syntax = "proto3";
+
+package im.platform.msg;
+
+import "common.proto";
+
+option java_package = "com.im.platform.msg.grpc";
+option java_multiple_files = true;
+
+service MessageService {
+  // 发送消息:同步返回消息ID和落库结果,异步触发下游分发
+  rpc SendMessage(SendMessageRequest) returns (SendMessageResponse);
+  // 拉取会话历史(按 chat_id 分片路由)
+  rpc PullHistory(PullHistoryRequest) returns (MessageList);
+  // 更新已读游标(不是逐条打标记)
+  rpc UpdateReadCursor(UpdateReadCursorRequest) returns (im.platform.common.Empty);
+  // 单聊场景下,客户端拿两个 user_id 换 chat_id(幂等:同一对用户重复调用拿到同一个 chat_id)。
+  // 群聊不需要这个,群聊直接用 group_id 当 chat_id。
+  rpc GetOrCreateSingleChat(GetOrCreateSingleChatRequest) returns (ChatInfo);
+  // 客户端确认收到一条推送消息(网关 method_id=9002 ACK 帧转发到这里)。
+  // 用于:1) 记录投递确认,离线补偿拉取时跳过已经通过实时推送确认过的消息,避免重复下发
+  //       2) 消息去重的落地点——message_id 全局唯一(idgen 生成),ack 记录以 message_id 为键
+  rpc Ack(AckMessageRequest) returns (im.platform.common.Empty);
+  // 更新会话级用户偏好(免打扰/置顶)。每次调用都传完整期望状态,不是增量 patch。
+  rpc UpdateConversationSetting(UpdateConversationSettingRequest) returns (im.platform.common.Empty);
+  // 拉取该用户全部会话的偏好设置(未设置过的会话不在返回列表里,默认即不免打扰、不置顶)。
+  rpc GetConversationSettings(GetConversationSettingsRequest) returns (ConversationSettingList);
+}
+
+message SendMessageRequest {
+  int64 chat_id = 1;
+  int64 sender_id = 2;
+  string client_msg_id = 3; // 客户端生成,用于服务端幂等去重
+  bytes content = 4;
+  int32 msg_type = 5;
+}
+
+message SendMessageResponse {
+  int64 message_id = 1; // 服务端分布式ID(idgen生成,编码chat_id分片信息)
+  int64 server_time = 2;
+}
+// 幂等实现:服务端先查 Redis(key=client_msg_id),命中直接返回上次结果,不重复落库
+
+message PullHistoryRequest {
+  int64 chat_id = 1;
+  int64 before_message_id = 2; // 0 表示从最新开始
+  int32 limit = 3;
+}
+
+message MessageList {
+  repeated MessageItem messages = 1;
+  bool has_more = 2;
+}
+
+message MessageItem {
+  int64 message_id = 1;
+  int64 chat_id = 2;
+  int64 sender_id = 3;
+  bytes content = 4;
+  int32 msg_type = 5;
+  int64 server_time = 6;
+}
+
+message UpdateReadCursorRequest {
+  int64 chat_id = 1;
+  int64 user_id = 2;
+  int64 read_to_message_id = 3;
+}
+
+message GetOrCreateSingleChatRequest {
+  int64 user_a = 1;
+  int64 user_b = 2;
+}
+
+message ChatInfo {
+  int64 chat_id = 1;
+}
+
+message AckMessageRequest {
+  int64 user_id = 1;
+  int64 message_id = 2;
+}
+
+message UpdateConversationSettingRequest {
+  int64 user_id = 1;
+  int64 chat_id = 2;
+  bool muted = 3;
+  bool pinned = 4;
+}
+
+message GetConversationSettingsRequest {
+  int64 user_id = 1;
+}
+
+message ConversationSetting {
+  int64 chat_id = 1;
+  bool muted = 2;
+  bool pinned = 3;
+  int64 updated_at = 4;
+}
+
+message ConversationSettingList {
+  repeated ConversationSetting settings = 1;
+}

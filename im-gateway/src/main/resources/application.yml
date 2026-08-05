@@ -1,0 +1,36 @@
+server:
+  port: 8081 # 仅用于 Actuator 健康检查,客户端长连接走 gateway.port
+
+spring:
+  application:
+    name: im-gateway
+  cloud:
+    nacos:
+      discovery:
+        server-addr: 127.0.0.1:8848
+  data:
+    redis:
+      host: 127.0.0.1
+      port: 6379
+      database: 0
+
+gateway:
+  port: 8900 # 客户端长连接监听端口
+  connection-key-ttl-seconds: 3600 # 连接密钥的最长存活时间,过期强制客户端重新握手
+  idle-timeout-seconds: 90 # 多久没收到客户端任何字节(含心跳)就判定死连接踢掉,配合客户端 30s 心跳间隔留 2 次容错
+  business-thread-pool-size: 500 # 处理解密/路由/加密 + 阻塞 gRPC 调用的线程池,按 I/O 并发量估,不是按 CPU 核数
+  security:
+    allowed-app-keys: "" # 逗号分隔的 app_key 白名单,握手时校验;留空=不启用准入控制(本地开发/现有测试工具默认能用)
+    connect-rate-limit-per-ip: 1000 # 单个源 IP 每秒最多新建多少条连接,超出直接关连接
+    message-rate-limit-per-user: 20 # 单个已登录用户每秒最多发多少条 SendMessage,超出返回 RESOURCE_EXHAUSTED
+
+core:
+  grpc:
+    host: 127.0.0.1
+    port: 9080 # im-core 的 gRPC 端口
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus

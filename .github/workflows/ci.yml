@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-verify-migrations:
+    runs-on: ubuntu-latest
+
+    # 只起 MySQL——Flyway 迁移脚本只涉及关系型表结构,不需要 Redis/MongoDB 陪跑。
+    # 单元测试(见下面的 test 步骤)全部是 Mockito 纯单元测试,不连真实服务,同样不需要。
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: im_core
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      # im-core/im-gateway 依赖 im-common-core / im-common-protocol / im-core-api(proto 生成的
+      # gRPC stub),这三个必须先单独 install 到本地仓库,原因见 README「已知缺口」里记录的
+      # `mvn ... -am` 在同一次 reactor 里重复跑 protobuf 生成偶发产物损坏的问题——CI 上分两步走,
+      # 跟本地排查出来的稳妥流程保持一致。
+      - name: Build im-common-core / im-common-protocol / im-core-api
+        run: mvn -B -pl im-common/im-common-core,im-common/im-common-protocol,im-core-api -am install -DskipTests
+
+      # 核心校验点(这个 job 存在的原因):8 个 V1~V8 迁移脚本能不能从一个全新空库一路 migrate
+      # 成功,提前在 PR 阶段就抓出语法错误、顺序错误、或者不小心改了已经提交过的旧迁移文件
+      # 导致的 checksum 不一致——而不是等部署到真实环境才发现。flyway-maven-plugin 独立执行,
+      # 不需要起完整 Spring Boot 应用(不用 Redis/MongoDB/gRPC 端口)。
+      - name: Verify Flyway migrations apply cleanly (fresh schema)
+        run: >
+          mvn -B -pl im-core org.flywaydb:flyway-maven-plugin:9.22.3:migrate
+          -Dflyway.url="jdbc:mysql://127.0.0.1:3306/im_core?useUnicode=true&characterEncoding=UTF-8&useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true"
+          -Dflyway.user=root
+          -Dflyway.password=root
+
+      - name: Run im-core unit tests
+        run: mvn -B -pl im-core test
+
+      - name: Build im-gateway
+        run: mvn -B -pl im-gateway install -DskipTests
+
+      - name: Run im-gateway unit tests
+        run: mvn -B -pl im-gateway test

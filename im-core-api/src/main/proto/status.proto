@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+package im.platform.status;
+
+option java_package = "com.im.platform.status.grpc";
+option java_multiple_files = true;
+
+service StatusService {
+  rpc SetOnline(SetOnlineRequest) returns (SetOnlineResponse);
+  rpc SetOffline(SetOfflineRequest) returns (SetOfflineResponse);
+  rpc GetStatus(GetStatusRequest) returns (UserStatusInfo);
+  rpc BatchGetStatus(BatchGetStatusRequest) returns (BatchStatusResponse);
+}
+
+message SetOnlineRequest {
+  int64 user_id = 1;
+  string device_id = 2;
+  int32 heartbeat_interval_sec = 3;
+}
+
+message SetOnlineResponse {
+  int64 server_time = 1;
+}
+
+message SetOfflineRequest {
+  int64 user_id = 1;
+  string device_id = 2;
+}
+
+message SetOfflineResponse {
+}
+
+message GetStatusRequest {
+  int64 user_id = 1;
+}
+
+message UserStatusInfo {
+  int64 user_id = 1;
+  bool online = 2;
+  int64 last_active_at = 3;
+}
+
+message BatchGetStatusRequest {
+  repeated int64 user_ids = 1;
+}
+
+message BatchStatusResponse {
+  repeated UserStatusInfo statuses = 1;
+}
