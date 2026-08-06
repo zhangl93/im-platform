@@ -377,9 +377,10 @@ java -jar im-gateway/target/im-gateway-1.0.0-SNAPSHOT.jar --spring.cloud.nacos.d
 - **只做了服务端身份校验,没做客户端身份校验**:`signature` 防的是中间人冒充服务端,gateway 没有校验发起握手的是不是合法客户端,生产化之前要补设备准入控制和限流。
 - **密钥派生是简化版**:`SHA-256(sharedSecret)`,没有掺 salt/info 的完整 HKDF;签名没有时间戳/nonce,细节见网关协议一节。
 - **消息存储的技术选型走了三步,记录一下这个过程**:最初想接 ShardingSphere 给 MySQL 的 `t_message` 分片,卡在它 5.4.1 编译期绑定的 SnakeYAML 1.x API 跟 Spring Boot 3.2.5 管理的 SnakeYAML 2.x 硬冲突(离线环境也拉不到修复过这个问题的新版本);退而求其次用 MyBatis-Plus 的 `DynamicTableNameInnerInterceptor` 在应用层手写了 `chat_id % 4` 取模分表,验证工作正常但代码复杂(要自己维护分片路由、Flyway 里建 4 张物理表);最终判断这套复杂度本身就是"用错数据库类型"的信号,改成消息固定存 MongoDB(单集合,分片交给 Mongo 原生分片集群),应用层分表逻辑整个删掉。当前 MongoDB 是本地单节点(`docker run mongo:7`),没有配副本集/分片集群,量级到需要真正水平扩展时再评估——但这是 MongoDB 自己的运维范畴,不需要再回到应用层写路由代码。
-- **压测工具"首次业务调用偶发超时"问题已定位并修复**:根因是压测工具自己的 bug(延迟子测试用的两条专用连接在连接爬坡+保持阶段完全空闲,超过网关 90s 空闲超时被踢线),不是网关容量缺陷,详见 `docs/LOAD_TEST_REPORT.md`。同一轮验证里又如实记录了一个新发现、尚未定位根因的现象:满载下延迟子测试后半段连续多次收不到 PUSH,两端都没报错,目前只有一个未经验证的猜测(专用连接用的是操作系统自动分配的临时端口,可能跟同机反复起停压测遗留的 TIME_WAIT 连接冲突)。
+- **压测工具"首次业务调用偶发超时"问题已定位并修复**:根因是压测工具自己的 bug(延迟子测试用的两条专用连接在连接爬坡+保持阶段完全空闲,超过网关 90s 空闲超时被踢线),不是网关容量缺陷,详见 `docs/LOAD_TEST_REPORT.md`。
+- **满载下延迟子测试"后半段连续收不到 PUSH"问题也已定位并修复**:真根因跟最初怀疑的"专用连接用临时端口"无关(按那个猜测控制变量重跑后问题原样复现,已排除)——是压测工具自己在 phase 3 里把 receiver 连接的心跳也停掉了,receiver 全程纯被动只收不发,超过网关 90s 空闲超时被服务端主动断开(只打一条 INFO 日志,不是 WARN,双端都没有明显报错信号),断开后 `ChannelRegistry` 里查不到这个用户的连接,`PushRouter` 直接静默跳过投递。只保留 sender 的心跳取消(receiver 不调用 `callEncrypted()`,心跳不会跟它冲突)后,延迟子测试样本数从 320/500 提升到 477/500,不再出现连续失败,详见 `docs/LOAD_TEST_REPORT.md`。排查过程中还顺带拿到一条关于本项目长期"编译产物损坏"疑案的新证据(怀疑是 IntelliJ 后台用 ECJ 编译器跟命令行 `mvn` 抢写同一份 `target/` 输出),同样记录在报告里。
 - **不做音视频信令、不做客户端 SDK、不做完整账号体系**(注册/找回密码)——按 /goal 范围明确排除,不是遗漏。
-- **CI 工作流已就绪但从未真正跑过**:项目目前不是 git 仓库(没有 `.git`),`.github/workflows/ci.yml` 是提前写好的定义,本地用同样的命令验证过完全可用(见下面「CI」一节),但要等这个目录真正被推到 GitHub 之后 workflow 才会被触发执行,当前不能声称"CI 已经在跑、有绿色徽章"。
+- **CI 已上线并跑绿**:仓库已推送到 [github.com/zhangl93/im-platform](https://github.com/zhangl93/im-platform),`.github/workflows/ci.yml` 已经真实触发过并通过(Flyway 迁移校验 + `im-core`/`im-gateway` 单元测试全部通过),见下面「CI」一节。
 
 ## CI
 
@@ -400,6 +401,6 @@ mvn -pl im-core org.flywaydb:flyway-maven-plugin:9.22.3:migrate \
 
 ## 后续路线
 
-1. 继续排查满载延迟子测试后半段连续收不到 PUSH 的新现象(见 `docs/LOAD_TEST_REPORT.md`),验证/排除"专用连接用临时端口"这个猜测
-2. 把这个目录初始化成 git 仓库并推到远端,让 `.github/workflows/ci.yml` 真正跑起来
+1. 排查一个新发现、优先级不高的小问题:修复"后半段连续收不到 PUSH"之后,延迟子测试仍有约 4.6% 的样本(23/500)超时,规律得几乎每 21 次迭代丢一次但都是孤立单次、不影响 P99,尚未深挖,见 `docs/LOAD_TEST_REPORT.md`
+2. 确认并解决"编译产物被 ECJ 风格桩实现覆盖"的问题(怀疑是 IntelliJ 后台编译器跟命令行 `mvn` 抢写同一份 `target/` 输出),见 `docs/LOAD_TEST_REPORT.md`「编译产物损坏的新线索」一节
 3. 视实际负载再决定要不要把 msg/dfs 这类计算或 IO 密集的部分拆出去独立扩缩容(拆分信号、判断依据、具体拆法见 [`docs/SPLIT_THRESHOLDS.md`](docs/SPLIT_THRESHOLDS.md))

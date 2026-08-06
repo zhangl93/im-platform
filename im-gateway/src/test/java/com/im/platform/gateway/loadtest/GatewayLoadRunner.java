@@ -131,8 +131,18 @@ public final class GatewayLoadRunner {
         long receiverUserId = 975_001L + java.util.concurrent.ThreadLocalRandom.current().nextInt(5_000);
         System.out.println();
         System.out.println("=== phase 0: establishing two dedicated connections for the latency sub-test ===");
-        LatencyTestClient sender = new LatencyTestClient(latencyBootstrap, host, port, localAddresses.get(0), senderUserId);
-        LatencyTestClient receiver = new LatencyTestClient(latencyBootstrap, host, port, localAddresses.get(0), receiverUserId);
+        // 之前这两条连接本地端口用的是 0(交给 OS 自动分配),落进 Windows 默认临时端口段
+        // (49152~65535)——docs/LOAD_TEST_REPORT.md 记录过一次满载压测里 receiver 这条连接
+        // 从某个 iteration 开始永久收不到 PUSH(服务端写成功、客户端也不报错,双端沉默)的
+        // 现象,当时怀疑就是这个端口段跟同机反复起停压测遗留的 TIME_WAIT 连接冲突,但没有
+        // 控制变量验证过。这里改成跟批量连接同一套做法:显式指定本地端口(避开临时端口段),
+        // 再额外用一个批量连接不会用到的专属环回地址(127.0.0.<localIpCount+1>),两个维度
+        // 都跟背景连接、跟历史遗留的 TIME_WAIT 隔开,把这个变量控制掉。
+        InetAddress dedicatedAddr = InetAddress.getByName("127.0.0." + (localIpCount + 1));
+        int senderLocalPort = LOCAL_PORT_BASE + 20_000;
+        int receiverLocalPort = LOCAL_PORT_BASE + 20_001;
+        LatencyTestClient sender = new LatencyTestClient(latencyBootstrap, host, port, dedicatedAddr, senderLocalPort, senderUserId);
+        LatencyTestClient receiver = new LatencyTestClient(latencyBootstrap, host, port, dedicatedAddr, receiverLocalPort, receiverUserId);
         sender.connectAndAuthenticate();
         receiver.connectAndAuthenticate();
         System.out.println("[OK] latency-test sender/receiver connected and authenticated (sender=" + senderUserId + ", receiver=" + receiverUserId + ")");
@@ -194,12 +204,21 @@ public final class GatewayLoadRunner {
         // 建立完、心跳也都跑完一轮"的稳态,不是恰好撞上批量连接收尾那一下的瞬时抖动。
         Thread.sleep(5_000);
 
-        // 心跳保活的任务到此为止:phase 3 全程都在发真正的业务调用,连接不会再空闲,
-        // 不需要也不能再让心跳继续跑——它跟 callEncrypted() 抢同一个 responseQueue(协议没有
-        // 请求-响应关联 ID,没法按 ID 分流),必须先停掉,再把可能还没到达的心跳响应清空,
-        // 才能保证 phase 3 里 poll() 到的一定是刚发的那次业务调用的响应,不会被错认。
+        // 只停 sender 的心跳,receiver 的必须继续跑到整个 phase 3 结束——这是之前长期
+        // 排查不出来的"receiver 从某个 iteration 开始永久收不到 PUSH,两端都不报错"的
+        // 真正根因(见 docs/LOAD_TEST_REPORT.md):receiver 在 phase 3 全程都是纯被动的,
+        // 只调 awaitPushNanos() 轮询专属的 pushArrivalNanos 队列,自己不发任何业务帧;
+        // 心跳一停,receiver 这条连接就再没有任何字节流向网关,超过 idle-timeout-seconds
+        // (默认 90s)之后网关的 IdleStateHandler 会把它当死连接主动关掉——服务端只打一条
+        // INFO 级别的"idle timeout, closing"(不是 WARN,粗看日志容易漏掉),关闭后
+        // channelInactive 立刻把这个 userId 从 ChannelRegistry 摘掉,后续 PushRouter.deliver()
+        // 查到 channels 为空直接静默 return,不写、不报错、不留痕迹;客户端这边 LatencyTestClient
+        // 的内部 handler 也没重写 channelInactive,服务端主动关连接在客户端侧完全没有任何输出。
+        // sender 就不一样,必须停:它在 phase 3 全程通过 callEncrypted() 发业务调用并阻塞
+        // poll() 同一个 responseQueue,心跳响应混进去会被误当成业务调用的响应吃掉。receiver
+        // 不存在这个风险——它压根不调 callEncrypted(),心跳响应落进它自己的 responseQueue
+        // 没人读,不会干扰 pushArrivalNanos 这个专属队列,所以让它的心跳继续跑是安全的。
         senderHeartbeat.cancel(false);
-        receiverHeartbeat.cancel(false);
         sender.drainStaleResponses();
         receiver.drainStaleResponses();
 
@@ -360,7 +379,7 @@ public final class GatewayLoadRunner {
         private final java.util.concurrent.BlockingQueue<ServerFrame> responseQueue = new java.util.concurrent.LinkedBlockingQueue<>();
         private final java.util.concurrent.BlockingQueue<Long> pushArrivalNanos = new java.util.concurrent.LinkedBlockingQueue<>();
 
-        LatencyTestClient(Bootstrap bootstrap, String host, int port, InetAddress localAddr, long userId) throws InterruptedException {
+        LatencyTestClient(Bootstrap bootstrap, String host, int port, InetAddress localAddr, int localPort, long userId) throws InterruptedException {
             this.userId = userId;
             io.netty.channel.ChannelFuture future = bootstrap.clone()
                     .handler(new ChannelInitializer<SocketChannel>() {
@@ -414,7 +433,7 @@ public final class GatewayLoadRunner {
                                     });
                         }
                     })
-                    .connect(new InetSocketAddress(host, port), new InetSocketAddress(localAddr, 0))
+                    .connect(new InetSocketAddress(host, port), new InetSocketAddress(localAddr, localPort))
                     .sync();
             this.channel = future.channel();
         }

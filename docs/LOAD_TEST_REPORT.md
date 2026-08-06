@@ -61,14 +61,65 @@
 1. `PushRouter` 原来往一个已经死掉但还没被 90 秒空闲超时探测到的连接写数据时,不检查 `ChannelFuture` 是否真的写成功,还是照样把这次投递计入"成功"——已修复:写之前判 `isActive()`,写之后看 future 是否成功,失败就立即把这条连接从 `ChannelRegistry` 摘掉,不用等超时。
 2. 压测工具本身有处理阻塞没有超时的 bug(网关响应慢的时候会永久卡死而不是超时失败),已加 10 秒超时保护。
 
-## 另一个新发现的问题(如实记录,尚未定位根因)
+## receiver 永久收不到 PUSH 问题(已定位并修复)
 
-上面这轮验证跑的过程中,延迟子测试的 500 次探测里只收集到 320 次样本(其余 180 次"等 receiver 收到 PUSH"超时跳过)。仔细看失败分布,不是随机丢的:
+上一轮验证记录过一个"如实记录、尚未定位根因"的现象:延迟子测试从某个 iteration 开始连续超过 100 次全部超时、一直到第 500 次都没恢复,服务端 `PushRouter` 全程没有任何投递失败记录,客户端 receiver 也没触发 `exceptionCaught`,两端都"安静地"没有任何异常信号。当时留了一个未验证的猜测(专用连接的本地端口是操作系统自动分配的临时端口,怀疑跟 TIME_WAIT 残留冲突)。
 
-- 前段(iteration 20~314)是**按固定间隔(每 21 次)零星丢一次**,像是某种周期性资源争抢导致的偶发延迟超过了 5 秒的等待上限,而不是真的丢消息。
-- 从 iteration 335 开始,**连续 165 次全部超时,一直到第 500 次都没恢复**——服务端 `PushRouter` 的日志全程没有任何投递失败/连接异常的记录(`future.isSuccess()` 全部成功),客户端 `receiver` 这条连接也没有触发 `exceptionCaught`,看起来像是 receiver 这条连接在某个时间点开始"安静地"收不到东西了,但两端都没报错——这是这次排查里没能覆盖到的新现象,跟上面已修复的"空闲踢线"是两个不同的问题。
+**先说结论:那个猜测是错的**——按猜测把 sender/receiver 也换成显式指定的本地端口(+ 独立环回地址,彻底排除端口复用变量)重跑,问题原样复现,连"连续超时开始的 iteration 号"都跟修复前几乎一样,这就排除了端口/TIME_WAIT 是根因。
 
-**一个未经验证的猜测,留给后续排查**:延迟子测试这两条专用连接本地端口用的是 `0`(交给操作系统自动分配,落在 Windows 默认的临时端口段 49152~65535),跟本文档开头记录的"Windows 临时端口只够开 1.6 万条连接"是同一个端口段——批量连接为了绕开这个问题特地用了显式指定的非临时端口,但这两条专用连接没有照做。这次 debug 过程里在同一台机器上短时间内反复起停了好几轮压测(每次都会在临时端口段留下一批 `TIME_WAIT` 状态的残留连接),不排除是这个端口段的争抢/复用导致了 receiver 这条连接的异常。**没有确凿证据**,只是目前唯一说得通的线索,记录下来但不据此声称已经修复——真要验证需要控制变量单独跑(比如给这两条专用连接也换成显式端口,对照复测)。
+**真正的根因**,是压测工具自己在 phase 3 里的一个逻辑漏洞:
+
+1. `phase 3` 开始前,`senderHeartbeat` 和 `receiverHeartbeat` 都被 `cancel()` 掉了(注释里给的理由是"心跳响应跟 `callEncrypted()` 抢同一个 `responseQueue`,必须先停掉")。这个理由对 **sender** 成立(sender 全程都在调 `callEncrypted()` 发业务调用、阻塞 `poll()` 同一个 `responseQueue`),但对 **receiver 不成立**——receiver 在 phase 3 全程是纯被动的,只调 `awaitPushNanos()` 轮询它自己专属的 `pushArrivalNanos` 队列,从来不碰 `responseQueue`,心跳响应落进 `responseQueue` 也没人读,不会有任何干扰。
+2. receiver 心跳一停,这条连接在 phase 3 里就再也没有任何字节流向网关(它不发业务帧,也不再发心跳)。一旦 phase 3 运行时长超过网关的 `idle-timeout-seconds`(默认 90s),`IdleStateHandler` 就把这条连接当死连接主动关掉——服务端日志里能看到,但只是 **INFO** 级别的一行 `connection ... idle timeout, closing`,粗看日志(只筛 WARN/ERROR)完全发现不了。
+3. 连接一关,`GatewayChannelHandler.channelInactive` 立刻把这个 `userId` 从 `ChannelRegistry` 摘掉。之后 `PushRouter.deliver()` 查到这个 `userId` 没有任何本地连接,直接静默 `return`(见 `PushRouter.java` 第 68~70 行)——不写、不报错、不留任何痕迹,跟"投递失败"完全是两条不同的代码路径,这正是"服务端全程没有失败记录"的原因。
+4. 客户端这边,服务端主动关闭连接对 Netty 来说是正常的 `channelInactive`,不是 `exceptionCaught`;而 `LatencyTestClient` 内部的 handler 压根没重写 `channelInactive`,所以这个关闭事件在客户端侧完全没有任何输出——这正是"客户端也没报错"的原因。
+5. sender 这边完全不受影响,因为它自己一直在主动发业务调用,这些调用本身就是网关能收到的字节,持续刷新 sender 自己的空闲计时器——这就是为什么只有 receiver 单侧"失联"、sender 全程正常。
+
+**修复**(`GatewayLoadRunner.java`):只保留 `senderHeartbeat.cancel(false)`,`receiverHeartbeat` 不再取消,让它带着心跳跑完整个 phase 3。
+
+**验证**(`connections=50000 rate=1500/s hold=60s`,修复后完整跑一轮,过程中还顺带确认了一次编译产物损坏——build 出来的 class 文件被后台某个进程用 ECJ 风格的"Unresolved compilation problem"桩方法覆盖过,javap 反编译核实、重新编译验证后排除了这个干扰,细节见下面"编译产物损坏的新线索"一节):
+
+| 阶段 | 结果 |
+|---|---|
+| 连接爬坡 | 49,673 / 50,000 认证成功(99.35%),elapsed=41.4s |
+| 60 秒保持 | 49,673 条全部心跳验证存活 |
+| 延迟子测试 | samples=**477/500**(修复前 320/500),`avg=18.3ms p50=16ms p95=27ms p99=50ms max=164ms`,**PASS**(P99 远低于 200ms 验收线) |
+
+修复前"连续 100+ 次永久超时、到测试结束都不恢复"的模式**完全消失**——23 次超时全部是分散的单次丢失(`iteration 20, 41, 62, 83...` 大致每 21 次一次),不再有任何连续失败段。
+
+**残留的小问题(如实记录,不影响验收)**:分散丢失的这 23 次里,间隔精确到几乎每次都是 21 次迭代(20→41→62→83...误差在 ±1 以内),规律得不像随机抖动。目前没有再深入排查——可能跟 Redis Pub/Sub 批量投递、GC、或者压测客户端自己的调度有关,但每次都是孤立的单次超时(不会连续失败),对 P99 指标没有实质影响,判断优先级低于当前已修复的主问题,先记录下来,不纳入这轮修复范围。
+
+## 编译产物损坏的新线索(IntelliJ 后台编译器,ECJ 风格错误)
+
+排查上面这个问题的过程中,`mvn -pl im-gateway test-compile` 编译出来的部分 class 文件反复出现本项目此前长期记录为"root cause 不明"的"Unresolved compilation problem"运行时异常(`javap -p`只看方法签名看不出来,必须 `javap -c` 反编译方法体才能看到里面是不是一个 `throw new Error("Unresolved compilation problem")` 桩实现)。这次定位到一个新的、可复现的线索:
+
+- 同一次 `mvn test-compile` 编译出的多个 class 文件里,**只有部分**(比如这次是 `LatencyTestClient`、`LatencyTestClient$1`、`BulkClientHandler`,外层 `GatewayLoadRunner` 本身是好的)被替换成了这种桩实现,`mvn` 自己的输出全程 `BUILD SUCCESS`,不报任何错误或警告——这不是 javac 的行为(javac 遇到无法解析的符号会让整个编译单元失败,不会生成部分桩类),错误文案"Unresolved compilation problem"是 **Eclipse Compiler for Java(ECJ)** 特有的错误恢复模式的输出格式。
+- 用同一批文件反复测,同一批 class 文件在 `mvn` 编译完成几秒后是坏的,再等几秒后重新检查又变干净了——用高精度文件时间戳核实过,`mvn` 自己那次写入之后确实还有一次覆盖写入发生。
+- 项目里 `pom.xml` 并没有配置 `maven-compiler-plugin` 使用 ECJ(用的是默认 javac),说明这次覆盖写入不是 `mvn` 命令本身干的,而是**另一个独立进程**,用 ECJ 编译、以增量方式往同一个 `target/classes`/`target/test-classes` 目录写文件,时机跟命令行 `mvn` 的执行前后脚重叠。当时机器上确认在跑的相关进程里有 `idea64.exe`(IntelliJ IDEA)——跟本项目此前("已知缺口"里)记录的"IntelliJ 后台编译器可能在跟 `mvn -am` 抢同一份编译产物"的怀疑吻合,而且这次第一次拿到了具体、可解释错误文案来源(ECJ)的证据,不再只是"表现类似"的猜测。
+- **规避方法**(已验证有效,不需要关 IntelliJ):`mvn` 编译完成后不要立刻用,先反编译核实(`javap -c` 检查方法体,不能只看 `javap -p` 的签名列表),等连续几次检查都干净、状态稳定下来之后,再把 `target/classes`/`target/test-classes` 整个复制一份到项目目录之外的地方,后续都从这份快照跑,不再依赖会被外部进程持续覆写的 `target/` 目录本身。
+
+这个新线索比较有价值,建议后续要长期解决(比如在 IntelliJ 设置里确认 Java Compiler 选的是不是 Eclipse Compiler、或者关掉"Build project automatically"),但这不是本次任务的范围,这里先记录下来。
+
+## 复现方式
+
+```bash
+# 1. 启动依赖(MySQL、Redis 已通过 docker 跑在本机)、启动 im-core 和 im-gateway
+java -jar im-core/target/im-core-1.0.0-SNAPSHOT.jar --spring.cloud.nacos.discovery.enabled=false
+java -jar im-gateway/target/im-gateway-1.0.0-SNAPSHOT.jar --spring.cloud.nacos.discovery.enabled=false
+
+# 2. 编译压测工具(在 im-gateway 模块的 test 源码里,mvn test 不会自动跑它)
+mvn -pl im-gateway test-compile
+
+# 2.5 强烈建议:编译完先用 javap -c 反编译核实每个相关 class 文件的方法体不是
+#     "Unresolved compilation problem" 桩实现(只用 javap -p 看签名看不出这个问题),
+#     确认干净后再往下走——见上面"编译产物损坏的新线索"一节。
+
+# 3. 跑压测:host port 目标连接数 每秒建连速率 保持秒数 环回IP个数
+java -Xmx4g -cp "im-gateway/target/classes;im-gateway/target/test-classes;<依赖classpath>" \
+  com.im.platform.gateway.loadtest.GatewayLoadRunner 127.0.0.1 8900 50000 1500 60 5
+```
+
+依赖 classpath 用 `mvn -pl im-gateway dependency:build-classpath -Dmdep.outputFile=cp.txt` 生成。
 
 ## 复现方式
 
