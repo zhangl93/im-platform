@@ -14,6 +14,7 @@ import com.im.platform.msg.grpc.MessageItem;
 import com.im.platform.msg.grpc.MessageList;
 import com.im.platform.msg.grpc.MessageServiceGrpc;
 import com.im.platform.msg.grpc.PullHistoryRequest;
+import com.im.platform.msg.grpc.RecallMessageRequest;
 import com.im.platform.msg.grpc.SendMessageRequest;
 import com.im.platform.msg.grpc.SendMessageResponse;
 import com.im.platform.msg.grpc.UnreadCountResponse;
@@ -23,6 +24,7 @@ import com.im.platform.msg.mapper.ConversationSettingMapper;
 import com.im.platform.msg.service.AckService;
 import com.im.platform.msg.service.ConversationSettingService;
 import com.im.platform.msg.service.MessageQueryService;
+import com.im.platform.msg.service.MessageRecallService;
 import com.im.platform.msg.service.MessageWriteService;
 import com.im.platform.msg.service.ReadCursorService;
 import com.google.protobuf.ByteString;
@@ -43,19 +45,22 @@ public class MessageGrpcService extends MessageServiceGrpc.MessageServiceImplBas
     private final AckService ackService;
     private final ReadCursorService readCursorService;
     private final ConversationSettingService conversationSettingService;
+    private final MessageRecallService messageRecallService;
 
     public MessageGrpcService(MessageWriteService messageWriteService,
                                MessageQueryService messageQueryService,
                                ConversationService conversationService,
                                AckService ackService,
                                ReadCursorService readCursorService,
-                               ConversationSettingService conversationSettingService) {
+                               ConversationSettingService conversationSettingService,
+                               MessageRecallService messageRecallService) {
         this.messageWriteService = messageWriteService;
         this.messageQueryService = messageQueryService;
         this.conversationService = conversationService;
         this.ackService = ackService;
         this.readCursorService = readCursorService;
         this.conversationSettingService = conversationSettingService;
+        this.messageRecallService = messageRecallService;
     }
 
     @Override
@@ -94,13 +99,15 @@ public class MessageGrpcService extends MessageServiceGrpc.MessageServiceImplBas
         MessageList.Builder listBuilder = MessageList.newBuilder()
                 .setHasMore(messages.size() >= limit);
         for (MessageEntity entity : messages) {
+            boolean recalled = Boolean.TRUE.equals(entity.getRecalled());
             listBuilder.addMessages(MessageItem.newBuilder()
                     .setMessageId(entity.getMessageId())
                     .setChatId(entity.getChatId())
                     .setSenderId(entity.getSenderId())
-                    .setContent(ByteString.copyFrom(entity.getContent()))
+                    .setContent(recalled ? ByteString.EMPTY : ByteString.copyFrom(entity.getContent()))
                     .setMsgType(entity.getMsgType())
                     .setServerTime(entity.getServerTime())
+                    .setRecalled(recalled)
                     .build());
         }
         responseObserver.onNext(listBuilder.build());
@@ -144,6 +151,13 @@ public class MessageGrpcService extends MessageServiceGrpc.MessageServiceImplBas
     public void getUnreadCount(GetUnreadCountRequest request, StreamObserver<UnreadCountResponse> responseObserver) {
         long unreadCount = readCursorService.getUnreadCount(request.getChatId(), request.getUserId());
         responseObserver.onNext(UnreadCountResponse.newBuilder().setUnreadCount(unreadCount).build());
+        responseObserver.onCompleted();
+    }
+
+    @Override
+    public void recallMessage(RecallMessageRequest request, StreamObserver<Empty> responseObserver) {
+        messageRecallService.recall(request.getChatId(), request.getUserId(), request.getMessageId());
+        responseObserver.onNext(Empty.getDefaultInstance());
         responseObserver.onCompleted();
     }
 }

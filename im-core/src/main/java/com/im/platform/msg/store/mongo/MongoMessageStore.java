@@ -6,6 +6,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -54,6 +55,12 @@ public class MongoMessageStore implements MessageStore {
         return mongoTemplate.count(Query.query(criteria), MessageDocument.class);
     }
 
+    @Override
+    public void markRecalled(long chatId, long messageId) {
+        mongoTemplate.updateFirst(Query.query(Criteria.where("_id").is(messageId)),
+                Update.update("recalled", true), MessageDocument.class);
+    }
+
     private static MessageDocument toDocument(MessageEntity entity) {
         MessageDocument doc = new MessageDocument();
         doc.setMessageId(entity.getMessageId());
@@ -64,6 +71,7 @@ public class MongoMessageStore implements MessageStore {
         doc.setServerTime(entity.getServerTime());
         doc.setClientMsgId(entity.getClientMsgId());
         doc.setEx(entity.getEx());
+        doc.setRecalled(entity.getRecalled());
         return doc;
     }
 
@@ -77,6 +85,7 @@ public class MongoMessageStore implements MessageStore {
         entity.setServerTime(doc.getServerTime());
         entity.setClientMsgId(doc.getClientMsgId());
         entity.setEx(doc.getEx());
+        entity.setRecalled(Boolean.TRUE.equals(doc.getRecalled()));
         return entity;
     }
 }

@@ -37,6 +37,7 @@ import com.im.platform.msg.grpc.GetConversationSettingsRequest;
 import com.im.platform.msg.grpc.GetOrCreateSingleChatRequest;
 import com.im.platform.msg.grpc.GetUnreadCountRequest;
 import com.im.platform.msg.grpc.PullHistoryRequest;
+import com.im.platform.msg.grpc.RecallMessageRequest;
 import com.im.platform.msg.grpc.SendMessageRequest;
 import com.im.platform.msg.grpc.UpdateConversationSettingRequest;
 import com.im.platform.msg.grpc.UpdateReadCursorRequest;
@@ -108,6 +109,7 @@ public class MethodRegistry {
         register(MethodIds.UPDATE_CONVERSATION_SETTING, UpdateConversationSettingRequest.parser(), core.message::updateConversationSetting);
         register(MethodIds.GET_CONVERSATION_SETTINGS, GetConversationSettingsRequest.parser(), core.message::getConversationSettings);
         register(MethodIds.GET_UNREAD_COUNT, GetUnreadCountRequest.parser(), core.message::getUnreadCount);
+        register(MethodIds.RECALL_MESSAGE, RecallMessageRequest.parser(), core.message::recallMessage);
 
         // sync
         register(MethodIds.PULL_UPDATES, PullUpdatesRequest.parser(), core.sync::pullUpdates);

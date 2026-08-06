@@ -54,6 +54,7 @@ public final class MethodIds {
     public static final int UPDATE_CONVERSATION_SETTING = 3005;
     public static final int GET_CONVERSATION_SETTINGS = 3006;
     public static final int GET_UNREAD_COUNT = 3007;
+    public static final int RECALL_MESSAGE = 3008;
 
     // sync
     public static final int PULL_UPDATES = 4001;

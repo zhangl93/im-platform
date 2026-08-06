@@ -29,6 +29,9 @@ service MessageService {
   // 的消息数量。客户端自己拿已知的 chat_id 逐个查,平台不维护"这个用户有哪些会话"的清单
   // (那是 GetMyGroups/单聊会话由客户端自己跟踪 chat_id 的范畴,不是这个接口要解决的问题)。
   rpc GetUnreadCount(GetUnreadCountRequest) returns (UnreadCountResponse);
+  // 撤回自己发出的消息,仅发送者本人、且必须在发送后的撤回窗口内(见 MessageRecallService)。
+  // 不物理删除,pullHistory 返回的 MessageItem.recalled=true,content 清空。
+  rpc RecallMessage(RecallMessageRequest) returns (im.platform.common.Empty);
 }
 
 message SendMessageRequest {
@@ -60,9 +63,10 @@ message MessageItem {
   int64 message_id = 1;
   int64 chat_id = 2;
   int64 sender_id = 3;
-  bytes content = 4;
+  bytes content = 4; // 已撤回的消息这里是空——原文只在撤回窗口内的物理存储里保留,不通过读接口暴露
   int32 msg_type = 5;
   int64 server_time = 6;
+  bool recalled = 7;
 }
 
 message UpdateReadCursorRequest {
@@ -114,4 +118,10 @@ message GetUnreadCountRequest {
 
 message UnreadCountResponse {
   int64 unread_count = 1;
+}
+
+message RecallMessageRequest {
+  int64 chat_id = 1;
+  int64 user_id = 2;
+  int64 message_id = 3;
 }

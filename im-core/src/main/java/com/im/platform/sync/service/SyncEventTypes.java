@@ -14,4 +14,6 @@ public final class SyncEventTypes {
     public static final int READ_CURSOR_UPDATED = 1;
     /** payload 格式见 ConversationSettingService:"chatId:muted:pinned"。纯个人偏好,只写给操作者自己的其它设备,不广播给会话里的其他参与者。 */
     public static final int CONVERSATION_SETTING_UPDATED = 2;
+    /** payload 格式见 MessageRecallService:"chatId:messageId"。 */
+    public static final int MESSAGE_RECALLED = 3;
 }

@@ -24,6 +24,9 @@ public enum ErrorCode {
     GROUP_MEMBER_MUTED(2106, "sender is muted in this group"),
 
     MESSAGE_SEND_FAILED(3001, "message send failed"),
+    MESSAGE_NOT_FOUND(3002, "message not found"),
+    MESSAGE_RECALL_NOT_OWNER(3003, "only the sender can recall this message"),
+    MESSAGE_RECALL_WINDOW_EXPIRED(3004, "recall window has expired"),
 
     FILE_UPLOAD_FAILED(4001, "file upload failed");
 

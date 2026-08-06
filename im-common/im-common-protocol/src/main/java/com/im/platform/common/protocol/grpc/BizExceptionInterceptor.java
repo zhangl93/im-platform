@@ -39,9 +39,10 @@ public class BizExceptionInterceptor implements ServerInterceptor {
         ErrorCode errorCode = e.getErrorCode();
         return switch (errorCode) {
             case PARAM_INVALID -> Status.INVALID_ARGUMENT;
-            case USER_NOT_FOUND, GROUP_NOT_FOUND -> Status.NOT_FOUND;
+            case USER_NOT_FOUND, GROUP_NOT_FOUND, MESSAGE_NOT_FOUND -> Status.NOT_FOUND;
             case SESSION_EXPIRED, AUTH_FAILED -> Status.UNAUTHENTICATED;
-            case USER_BLOCKED, GROUP_MEMBER_LIMIT_EXCEEDED, GROUP_OWNER_TRANSFER_INVALID ->
+            case USER_BLOCKED, GROUP_MEMBER_LIMIT_EXCEEDED, GROUP_OWNER_TRANSFER_INVALID,
+                    MESSAGE_RECALL_NOT_OWNER, MESSAGE_RECALL_WINDOW_EXPIRED ->
                     Status.FAILED_PRECONDITION;
             default -> Status.UNKNOWN;
         };

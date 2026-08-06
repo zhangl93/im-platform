@@ -24,6 +24,7 @@ public class MessageDocument {
     private Long serverTime;
     private String clientMsgId;
     private String ex;
+    private Boolean recalled = Boolean.FALSE;
 
     public Long getMessageId() {
         return messageId;
@@ -87,5 +88,13 @@ public class MessageDocument {
 
     public void setEx(String ex) {
         this.ex = ex;
+    }
+
+    public Boolean getRecalled() {
+        return recalled;
+    }
+
+    public void setRecalled(Boolean recalled) {
+        this.recalled = recalled;
     }
 }

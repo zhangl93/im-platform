@@ -20,4 +20,7 @@ public interface MessageStore {
 
     /** 这个会话里 message_id 大于 afterMessageId 的消息数量,供未读数计算用。 */
     long countAfter(long chatId, long afterMessageId);
+
+    /** 标记一条消息已撤回。不做物理删除——保留记录,pullHistory 按 recalled 标记返回占位。 */
+    void markRecalled(long chatId, long messageId);
 }

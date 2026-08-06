@@ -15,6 +15,7 @@ public class MessageEntity {
     private Long serverTime;
     private String clientMsgId;
     private String ex; // 扩展字段(消息级自定义数据,比如表情回应),业务自定义,平台不解析
+    private Boolean recalled = Boolean.FALSE;
 
     public Long getMessageId() {
         return messageId;
@@ -78,5 +79,13 @@ public class MessageEntity {
 
     public void setEx(String ex) {
         this.ex = ex;
+    }
+
+    public Boolean getRecalled() {
+        return recalled;
+    }
+
+    public void setRecalled(Boolean recalled) {
+        this.recalled = recalled;
     }
 }
