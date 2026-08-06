@@ -48,6 +48,12 @@ public class MongoMessageStore implements MessageStore {
                 .collect(Collectors.toList());
     }
 
+    @Override
+    public long countAfter(long chatId, long afterMessageId) {
+        Criteria criteria = Criteria.where("chatId").is(chatId).and("messageId").gt(afterMessageId);
+        return mongoTemplate.count(Query.query(criteria), MessageDocument.class);
+    }
+
     private static MessageDocument toDocument(MessageEntity entity) {
         MessageDocument doc = new MessageDocument();
         doc.setMessageId(entity.getMessageId());

@@ -9,12 +9,14 @@ import com.im.platform.msg.grpc.ConversationSetting;
 import com.im.platform.msg.grpc.ConversationSettingList;
 import com.im.platform.msg.grpc.GetConversationSettingsRequest;
 import com.im.platform.msg.grpc.GetOrCreateSingleChatRequest;
+import com.im.platform.msg.grpc.GetUnreadCountRequest;
 import com.im.platform.msg.grpc.MessageItem;
 import com.im.platform.msg.grpc.MessageList;
 import com.im.platform.msg.grpc.MessageServiceGrpc;
 import com.im.platform.msg.grpc.PullHistoryRequest;
 import com.im.platform.msg.grpc.SendMessageRequest;
 import com.im.platform.msg.grpc.SendMessageResponse;
+import com.im.platform.msg.grpc.UnreadCountResponse;
 import com.im.platform.msg.grpc.UpdateConversationSettingRequest;
 import com.im.platform.msg.grpc.UpdateReadCursorRequest;
 import com.im.platform.msg.mapper.ConversationSettingMapper;
@@ -135,6 +137,13 @@ public class MessageGrpcService extends MessageServiceGrpc.MessageServiceImplBas
                     .build());
         }
         responseObserver.onNext(listBuilder.build());
+        responseObserver.onCompleted();
+    }
+
+    @Override
+    public void getUnreadCount(GetUnreadCountRequest request, StreamObserver<UnreadCountResponse> responseObserver) {
+        long unreadCount = readCursorService.getUnreadCount(request.getChatId(), request.getUserId());
+        responseObserver.onNext(UnreadCountResponse.newBuilder().setUnreadCount(unreadCount).build());
         responseObserver.onCompleted();
     }
 }

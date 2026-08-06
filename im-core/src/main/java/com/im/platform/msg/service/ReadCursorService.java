@@ -2,6 +2,7 @@ package com.im.platform.msg.service;
 
 import com.im.platform.conversation.RecipientResolver;
 import com.im.platform.msg.mapper.ReadCursorMapper;
+import com.im.platform.msg.store.MessageStore;
 import com.im.platform.sync.service.SyncEventTypes;
 import com.im.platform.sync.service.UpdateLogService;
 import org.springframework.stereotype.Service;
@@ -22,13 +23,16 @@ public class ReadCursorService {
     private final ReadCursorMapper readCursorMapper;
     private final UpdateLogService updateLogService;
     private final RecipientResolver recipientResolver;
+    private final MessageStore messageStore;
 
     public ReadCursorService(ReadCursorMapper readCursorMapper,
                               UpdateLogService updateLogService,
-                              RecipientResolver recipientResolver) {
+                              RecipientResolver recipientResolver,
+                              MessageStore messageStore) {
         this.readCursorMapper = readCursorMapper;
         this.updateLogService = updateLogService;
         this.recipientResolver = recipientResolver;
+        this.messageStore = messageStore;
     }
 
     public void updateReadCursor(long chatId, long userId, long readToMessageId) {
@@ -45,5 +49,10 @@ public class ReadCursorService {
     public long getReadToMessageId(long chatId, long userId) {
         Long value = readCursorMapper.selectReadToMessageId(chatId, userId);
         return value == null ? 0L : value;
+    }
+
+    /** 未读数 = 已读游标之后 message_id 更大的消息数量。没读过(游标为 0)时等价于这个会话的全部消息。 */
+    public long getUnreadCount(long chatId, long userId) {
+        return messageStore.countAfter(chatId, getReadToMessageId(chatId, userId));
     }
 }

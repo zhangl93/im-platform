@@ -337,6 +337,8 @@ java -jar im-gateway/target/im-gateway-1.0.0-SNAPSHOT.jar --spring.cloud.nacos.d
 
 **群成员列表(`GetGroupMembers`)**:`GroupInfo` 此前只暴露 `member_count`,没有任何 RPC 能拿到实际成员名单——客户端连"群成员列表"这个最基础的 UI 都画不出来。新增 `GetGroupMembers`,直接复用 `Group.getMembers()`(不新增应用层方法,`GroupGrpcService` 复用已有的 `groupApplicationService.getGroup()`),返回每个成员的 `user_id`/`role`/`joined_at`/`muted_until`/`ex`。没有做分页——群规模本来就有 `GroupPolicy.maxMemberCount` 硬上限兜底,量级到需要分页时再加。已通过真实网关协议验证:建群后只有群主一人、加人后成员列表和角色都正确、成员退群后列表同步更新。
 
+**未读数(`GetUnreadCount`)**:此前客户端只能拿到已读游标(`read_to_message_id`),自己没法算出"还有几条没读"这个最基础的会话列表红点数字。新增 `MessageStore.countAfter(chatId, afterMessageId)`(`MongoMessageStore` 里就是一个 `messageId > X` 的 count 查询,跟 `pullHistory` 依赖的是同一条"`message_id` 在同一 `chat_id` 内单调递增"的既有约定,不是新引入的假设),`ReadCursorService.getUnreadCount` 组合已有的 `getReadToMessageId` 和这个新方法。没有做成"一次性拉全部会话未读数"的批量接口——平台本来就不维护"这个用户有哪些单聊会话"的清单(群聊有 `GetMyGroups`,单聊没有对应物,客户端自己跟踪 `chat_id`),批量接口需要先解决这个更大的问题,不是这次要做的事。已通过真实网关协议验证:未读数随发消息增长、`UpdateReadCursor` 后清零、清零后再来一条消息变回 1。
+
 ## 数据层设计
 
 | 数据类型 | 存储 | 分片键 | 原因 |

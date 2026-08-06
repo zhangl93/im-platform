@@ -35,6 +35,7 @@ import com.im.platform.common.protocol.grpc.HeartbeatResponse;
 import com.im.platform.gateway.client.CoreGrpcClients;
 import com.im.platform.msg.grpc.GetConversationSettingsRequest;
 import com.im.platform.msg.grpc.GetOrCreateSingleChatRequest;
+import com.im.platform.msg.grpc.GetUnreadCountRequest;
 import com.im.platform.msg.grpc.PullHistoryRequest;
 import com.im.platform.msg.grpc.SendMessageRequest;
 import com.im.platform.msg.grpc.UpdateConversationSettingRequest;
@@ -106,6 +107,7 @@ public class MethodRegistry {
         register(MethodIds.GET_OR_CREATE_SINGLE_CHAT, GetOrCreateSingleChatRequest.parser(), core.message::getOrCreateSingleChat);
         register(MethodIds.UPDATE_CONVERSATION_SETTING, UpdateConversationSettingRequest.parser(), core.message::updateConversationSetting);
         register(MethodIds.GET_CONVERSATION_SETTINGS, GetConversationSettingsRequest.parser(), core.message::getConversationSettings);
+        register(MethodIds.GET_UNREAD_COUNT, GetUnreadCountRequest.parser(), core.message::getUnreadCount);
 
         // sync
         register(MethodIds.PULL_UPDATES, PullUpdatesRequest.parser(), core.sync::pullUpdates);

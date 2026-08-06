@@ -17,4 +17,7 @@ public interface MessageStore {
     MessageEntity findById(long chatId, long messageId);
 
     List<MessageEntity> pullHistory(long chatId, long beforeMessageId, int limit);
+
+    /** 这个会话里 message_id 大于 afterMessageId 的消息数量,供未读数计算用。 */
+    long countAfter(long chatId, long afterMessageId);
 }

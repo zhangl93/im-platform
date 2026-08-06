@@ -25,6 +25,10 @@ service MessageService {
   rpc UpdateConversationSetting(UpdateConversationSettingRequest) returns (im.platform.common.Empty);
   // 拉取该用户全部会话的偏好设置(未设置过的会话不在返回列表里,默认即不免打扰、不置顶)。
   rpc GetConversationSettings(GetConversationSettingsRequest) returns (ConversationSettingList);
+  // 这个会话里,这个用户还有多少条没读的消息——已读游标(read_to_message_id)之后 message_id 更大
+  // 的消息数量。客户端自己拿已知的 chat_id 逐个查,平台不维护"这个用户有哪些会话"的清单
+  // (那是 GetMyGroups/单聊会话由客户端自己跟踪 chat_id 的范畴,不是这个接口要解决的问题)。
+  rpc GetUnreadCount(GetUnreadCountRequest) returns (UnreadCountResponse);
 }
 
 message SendMessageRequest {
@@ -101,4 +105,13 @@ message ConversationSetting {
 
 message ConversationSettingList {
   repeated ConversationSetting settings = 1;
+}
+
+message GetUnreadCountRequest {
+  int64 chat_id = 1;
+  int64 user_id = 2;
+}
+
+message UnreadCountResponse {
+  int64 unread_count = 1;
 }
