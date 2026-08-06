@@ -3,6 +3,8 @@ package com.im.platform.msg.store.mongo;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 
+import java.util.List;
+
 /**
  * 一条消息一个文档,不做应用层分片——按 chat_id 水平扩展这件事交给 Mongo 自己的分片集群
  * (shard key + mongos)原生处理。
@@ -25,6 +27,7 @@ public class MessageDocument {
     private String clientMsgId;
     private String ex;
     private Boolean recalled = Boolean.FALSE;
+    private List<Long> atUserIds;
 
     public Long getMessageId() {
         return messageId;
@@ -96,5 +99,13 @@ public class MessageDocument {
 
     public void setRecalled(Boolean recalled) {
         this.recalled = recalled;
+    }
+
+    public List<Long> getAtUserIds() {
+        return atUserIds;
+    }
+
+    public void setAtUserIds(List<Long> atUserIds) {
+        this.atUserIds = atUserIds;
     }
 }

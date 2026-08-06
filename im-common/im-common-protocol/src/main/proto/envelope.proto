@@ -66,4 +66,5 @@ message PushMessage {
   bytes content = 5;
   int32 msg_type = 6;
   int64 server_time = 7;
+  repeated int64 at_user_ids = 8; // 群消息 @ 了哪些人,单聊场景恒为空
 }

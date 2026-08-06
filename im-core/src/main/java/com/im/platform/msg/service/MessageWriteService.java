@@ -76,7 +76,8 @@ public class MessageWriteService {
         this.offlinePushTriggerService = offlinePushTriggerService;
     }
 
-    public MessageEntity send(long chatId, long senderId, String clientMsgId, byte[] content, int msgType) {
+    public MessageEntity send(long chatId, long senderId, String clientMsgId, byte[] content, int msgType,
+                               List<Long> atUserIds) {
         String idempotentKey = IDEMPOTENT_KEY_PREFIX + clientMsgId;
 
         String existingMessageId = stringRedisTemplate.opsForValue().get(idempotentKey);
@@ -111,6 +112,7 @@ public class MessageWriteService {
         entity.setMsgType(msgType);
         entity.setServerTime(System.currentTimeMillis());
         entity.setClientMsgId(clientMsgId);
+        entity.setAtUserIds(atUserIds);
         messageStore.insert(entity);
         messageMetrics.recordMessageSent();
 
@@ -124,7 +126,7 @@ public class MessageWriteService {
                 messageId, chatId, senderId, msgType, entity.getServerTime()));
 
         for (Long recipientId : recipients) {
-            pushPublisher.publish(recipientId, messageId, chatId, senderId, content, msgType, entity.getServerTime());
+            pushPublisher.publish(recipientId, messageId, chatId, senderId, content, msgType, entity.getServerTime(), atUserIds);
         }
         // 在线推送(上面那个循环)只有真的在线才会投出去;不在线的那部分人在这里单独判断,
         // 触发离线推送(APNs/FCM 等厂商通道),两条路径互不依赖,见 OfflinePushTriggerService 说明。

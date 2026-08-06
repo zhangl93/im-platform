@@ -40,6 +40,7 @@ message SendMessageRequest {
   string client_msg_id = 3; // 客户端生成,用于服务端幂等去重
   bytes content = 4;
   int32 msg_type = 5;
+  repeated int64 at_user_ids = 6; // 群消息 @ 了哪些人;单聊场景不该传,平台不校验、原样存取转发
 }
 
 message SendMessageResponse {
@@ -67,6 +68,7 @@ message MessageItem {
   int32 msg_type = 5;
   int64 server_time = 6;
   bool recalled = 7;
+  repeated int64 at_user_ids = 8; // 已撤回的消息这里也清空,跟 content 一致
 }
 
 message UpdateReadCursorRequest {

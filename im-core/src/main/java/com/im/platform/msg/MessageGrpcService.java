@@ -81,7 +81,7 @@ public class MessageGrpcService extends MessageServiceGrpc.MessageServiceImplBas
     public void sendMessage(SendMessageRequest request, StreamObserver<SendMessageResponse> responseObserver) {
         MessageEntity entity = messageWriteService.send(
                 request.getChatId(), request.getSenderId(), request.getClientMsgId(),
-                request.getContent().toByteArray(), request.getMsgType());
+                request.getContent().toByteArray(), request.getMsgType(), request.getAtUserIdsList());
 
         responseObserver.onNext(SendMessageResponse.newBuilder()
                 .setMessageId(entity.getMessageId())
@@ -100,15 +100,18 @@ public class MessageGrpcService extends MessageServiceGrpc.MessageServiceImplBas
                 .setHasMore(messages.size() >= limit);
         for (MessageEntity entity : messages) {
             boolean recalled = Boolean.TRUE.equals(entity.getRecalled());
-            listBuilder.addMessages(MessageItem.newBuilder()
+            MessageItem.Builder itemBuilder = MessageItem.newBuilder()
                     .setMessageId(entity.getMessageId())
                     .setChatId(entity.getChatId())
                     .setSenderId(entity.getSenderId())
                     .setContent(recalled ? ByteString.EMPTY : ByteString.copyFrom(entity.getContent()))
                     .setMsgType(entity.getMsgType())
                     .setServerTime(entity.getServerTime())
-                    .setRecalled(recalled)
-                    .build());
+                    .setRecalled(recalled);
+            if (!recalled && entity.getAtUserIds() != null) {
+                itemBuilder.addAllAtUserIds(entity.getAtUserIds());
+            }
+            listBuilder.addMessages(itemBuilder.build());
         }
         responseObserver.onNext(listBuilder.build());
         responseObserver.onCompleted();

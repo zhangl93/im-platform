@@ -72,6 +72,7 @@ public class MongoMessageStore implements MessageStore {
         doc.setClientMsgId(entity.getClientMsgId());
         doc.setEx(entity.getEx());
         doc.setRecalled(entity.getRecalled());
+        doc.setAtUserIds(entity.getAtUserIds());
         return doc;
     }
 
@@ -86,6 +87,7 @@ public class MongoMessageStore implements MessageStore {
         entity.setClientMsgId(doc.getClientMsgId());
         entity.setEx(doc.getEx());
         entity.setRecalled(Boolean.TRUE.equals(doc.getRecalled()));
+        entity.setAtUserIds(doc.getAtUserIds());
         return entity;
     }
 }

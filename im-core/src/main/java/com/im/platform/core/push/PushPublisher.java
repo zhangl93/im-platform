@@ -6,6 +6,8 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.Base64;
+import java.util.Collections;
+import java.util.List;
 
 /**
  * 把一条已经落库成功的消息,以 PushMessage 的形式广播到 Redis Pub/Sub,让所有 gateway 实例
@@ -25,7 +27,7 @@ public class PushPublisher {
     }
 
     public void publish(long targetUserId, long messageId, long chatId, long senderId,
-                         byte[] content, int msgType, long serverTime) {
+                         byte[] content, int msgType, long serverTime, List<Long> atUserIds) {
         PushMessage message = PushMessage.newBuilder()
                 .setTargetUserId(targetUserId)
                 .setMessageId(messageId)
@@ -34,6 +36,7 @@ public class PushPublisher {
                 .setContent(com.google.protobuf.ByteString.copyFrom(content))
                 .setMsgType(msgType)
                 .setServerTime(serverTime)
+                .addAllAtUserIds(atUserIds == null ? Collections.emptyList() : atUserIds)
                 .build();
         String encoded = Base64.getEncoder().encodeToString(message.toByteArray());
         stringRedisTemplate.convertAndSend(PushChannels.MESSAGE_PUSH, encoded);

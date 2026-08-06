@@ -341,6 +341,8 @@ java -jar im-gateway/target/im-gateway-1.0.0-SNAPSHOT.jar --spring.cloud.nacos.d
 
 **消息撤回(`RecallMessage`)**:此前没有任何撤回/编辑/删除类的 RPC,发出去的消息没有后悔药。新增 `MessageRecallService`:仅发送者本人、且必须在发送后 2 分钟撤回窗口内(参考主流 IM 惯例,没做成可配置项,没有真实场景需要按业务方定制这个数字);不做物理删除,`MessageEntity`/`MessageDocument` 新增 `recalled` 标记,`pullHistory` 侧按这个标记清空 `content`、置位 `MessageItem.recalled`,历史记录里留一条占位而不是彻底消失。撤回事件走跟已读回执同一套 `update_log` 广播路径(`SyncEventTypes.MESSAGE_RECALLED`),不单独做实时 PUSH——理由跟 `ReadCursorService` 一致,这是"消息状态变更"不是"新消息",客户端下次 `PullUpdates` 自然能拿到。已撤回的消息再撤回一次是幂等空操作,跟本项目其它写操作的幂等约定一致。已通过真实网关协议验证:非发送者撤回被拒绝、发送者撤回后双方 `pullHistory` 都显示占位、重复撤回幂等、群消息撤回后其他成员也看到占位。
 
+**群消息 @ 提及(`at_user_ids`)**:`SendMessageRequest` 此前没有任何字段能表达"这条群消息 @ 了谁",客户端做不了"高亮 @我 的消息"这种基础体验。新增 `repeated int64 at_user_ids`,平台只原样存取转发、不校验是否真的是群成员(跟 `ex` 扩展字段一个态度——语义完全交给客户端/业务自己定义)。贯穿三条路径:落库(`MessageEntity`/`MessageDocument` 新增字段)、实时推送(`PushMessage` 同步加了这个字段,在线成员通过 PUSH 立刻拿到)、历史拉取(`pullHistory` 的 `MessageItem` 回填)。撤回后 `at_user_ids` 跟 `content` 一起清空,语义保持一致。已通过真实网关协议验证:被 @ 的用户和群里其他成员都能从实时 PUSH 里拿到完整的 `at_user_ids`(不只是自己有没有被 @,而是整条消息 @ 了谁)、`pullHistory` 正确回填、不带 @ 的普通消息不受影响(空列表)、撤回后清空。
+
 ## 数据层设计
 
 | 数据类型 | 存储 | 分片键 | 原因 |
