@@ -47,6 +47,7 @@ public class MessageWriteService {
     private final PushPublisher pushPublisher;
     private final MessageMetrics messageMetrics;
     private final GroupMuteGuard groupMuteGuard;
+    private final SingleChatBlockGuard singleChatBlockGuard;
     private final OfflinePushTriggerService offlinePushTriggerService;
 
     public MessageWriteService(MessageStore messageStore,
@@ -59,6 +60,7 @@ public class MessageWriteService {
                                 PushPublisher pushPublisher,
                                 MessageMetrics messageMetrics,
                                 GroupMuteGuard groupMuteGuard,
+                                SingleChatBlockGuard singleChatBlockGuard,
                                 OfflinePushTriggerService offlinePushTriggerService) {
         this.messageStore = messageStore;
         this.idGenClient = idGenClient;
@@ -70,6 +72,7 @@ public class MessageWriteService {
         this.pushPublisher = pushPublisher;
         this.messageMetrics = messageMetrics;
         this.groupMuteGuard = groupMuteGuard;
+        this.singleChatBlockGuard = singleChatBlockGuard;
         this.offlinePushTriggerService = offlinePushTriggerService;
     }
 
@@ -85,6 +88,7 @@ public class MessageWriteService {
         }
 
         groupMuteGuard.checkNotMuted(chatId, senderId);
+        singleChatBlockGuard.checkNotBlocked(chatId, senderId);
 
         String textContent = new String(content, StandardCharsets.UTF_8);
         if (sensitiveWordMatcher.containsSensitiveWord(textContent)) {
