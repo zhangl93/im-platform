@@ -13,6 +13,7 @@ import com.im.platform.idgen.IdGenClient;
 import com.im.platform.msg.entity.MessageEntity;
 import com.im.platform.msg.service.moderation.SensitiveWordMatcher;
 import com.im.platform.msg.store.MessageStore;
+import com.im.platform.push.service.OfflinePushTriggerService;
 import com.im.platform.sync.service.MessageSyncNotifier;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
@@ -46,6 +47,7 @@ public class MessageWriteService {
     private final PushPublisher pushPublisher;
     private final MessageMetrics messageMetrics;
     private final GroupMuteGuard groupMuteGuard;
+    private final OfflinePushTriggerService offlinePushTriggerService;
 
     public MessageWriteService(MessageStore messageStore,
                                 IdGenClient idGenClient,
@@ -56,7 +58,8 @@ public class MessageWriteService {
                                 RecipientResolver recipientResolver,
                                 PushPublisher pushPublisher,
                                 MessageMetrics messageMetrics,
-                                GroupMuteGuard groupMuteGuard) {
+                                GroupMuteGuard groupMuteGuard,
+                                OfflinePushTriggerService offlinePushTriggerService) {
         this.messageStore = messageStore;
         this.idGenClient = idGenClient;
         this.sensitiveWordMatcher = sensitiveWordMatcher;
@@ -67,6 +70,7 @@ public class MessageWriteService {
         this.pushPublisher = pushPublisher;
         this.messageMetrics = messageMetrics;
         this.groupMuteGuard = groupMuteGuard;
+        this.offlinePushTriggerService = offlinePushTriggerService;
     }
 
     public MessageEntity send(long chatId, long senderId, String clientMsgId, byte[] content, int msgType) {
@@ -118,6 +122,9 @@ public class MessageWriteService {
         for (Long recipientId : recipients) {
             pushPublisher.publish(recipientId, messageId, chatId, senderId, content, msgType, entity.getServerTime());
         }
+        // 在线推送(上面那个循环)只有真的在线才会投出去;不在线的那部分人在这里单独判断,
+        // 触发离线推送(APNs/FCM 等厂商通道),两条路径互不依赖,见 OfflinePushTriggerService 说明。
+        offlinePushTriggerService.triggerForOfflineRecipients(chatId, senderId, msgType, recipients);
         return entity;
     }
 }

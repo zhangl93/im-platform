@@ -1,0 +1,37 @@
+syntax = "proto3";
+
+package im.platform.push;
+
+import "common.proto";
+
+option java_package = "com.im.platform.push.grpc";
+option java_multiple_files = true;
+
+// 离线推送(APNs/FCM 等厂商通道)设备 token 登记。跟在线消息推送(msg.proto 里
+// SendMessage 触发的 Redis Pub/Sub 那条路径)完全独立——这个 service 只管理
+// "这个用户的这台设备,推送 token 是什么",具体什么时候触发离线推送是
+// im-core 内部逻辑(见 OfflinePushTriggerService),不是这个 RPC 的职责。
+service PushTokenService {
+  // 客户端登录成功、或者厂商 token 刷新后调用。同一个 device_id 重复登记直接覆盖旧 token。
+  rpc RegisterPushToken(RegisterPushTokenRequest) returns (im.platform.common.Empty);
+  // 客户端登出、或者用户关闭通知权限时调用,登记删掉,之后不会再收到这台设备的离线推送。
+  rpc UnregisterPushToken(UnregisterPushTokenRequest) returns (im.platform.common.Empty);
+}
+
+// 枚举顺序与 im-core 领域层 com.im.platform.push.domain.PushPlatform 保持一致。
+enum PushPlatform {
+  IOS = 0;
+  ANDROID = 1;
+}
+
+message RegisterPushTokenRequest {
+  int64 user_id = 1;
+  string device_id = 2;
+  PushPlatform platform = 3;
+  string push_token = 4;
+}
+
+message UnregisterPushTokenRequest {
+  int64 user_id = 1;
+  string device_id = 2;
+}

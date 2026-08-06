@@ -5,6 +5,7 @@ import com.im.platform.biz.interfaces.grpc.UserGrpcService;
 import com.im.platform.common.protocol.grpc.BizExceptionInterceptor;
 import com.im.platform.dfs.interfaces.grpc.FileGrpcService;
 import com.im.platform.msg.MessageGrpcService;
+import com.im.platform.push.interfaces.grpc.PushTokenGrpcService;
 import com.im.platform.session.interfaces.grpc.SessionGrpcService;
 import com.im.platform.status.interfaces.grpc.StatusGrpcService;
 import com.im.platform.sync.interfaces.grpc.SyncGrpcService;
@@ -36,6 +37,7 @@ public class GrpcServerLifecycle implements SmartLifecycle {
     private final SyncGrpcService syncGrpcService;
     private final StatusGrpcService statusGrpcService;
     private final FileGrpcService fileGrpcService;
+    private final PushTokenGrpcService pushTokenGrpcService;
 
     private Server server;
     private volatile boolean running;
@@ -47,7 +49,8 @@ public class GrpcServerLifecycle implements SmartLifecycle {
                                 MessageGrpcService messageGrpcService,
                                 SyncGrpcService syncGrpcService,
                                 StatusGrpcService statusGrpcService,
-                                FileGrpcService fileGrpcService) {
+                                FileGrpcService fileGrpcService,
+                                PushTokenGrpcService pushTokenGrpcService) {
         this.port = port;
         this.sessionGrpcService = sessionGrpcService;
         this.userGrpcService = userGrpcService;
@@ -56,6 +59,7 @@ public class GrpcServerLifecycle implements SmartLifecycle {
         this.syncGrpcService = syncGrpcService;
         this.statusGrpcService = statusGrpcService;
         this.fileGrpcService = fileGrpcService;
+        this.pushTokenGrpcService = pushTokenGrpcService;
     }
 
     @Override
@@ -69,11 +73,12 @@ public class GrpcServerLifecycle implements SmartLifecycle {
                     .addService(syncGrpcService)
                     .addService(statusGrpcService)
                     .addService(fileGrpcService)
+                    .addService(pushTokenGrpcService)
                     .intercept(new BizExceptionInterceptor())
                     .build()
                     .start();
             running = true;
-            log.info("im-core gRPC server started on port {}, services: session/biz.user/biz.group/msg/sync/status/file", port);
+            log.info("im-core gRPC server started on port {}, services: session/biz.user/biz.group/msg/sync/status/file/push", port);
         } catch (IOException e) {
             throw new IllegalStateException("failed to start im-core gRPC server on port " + port, e);
         }

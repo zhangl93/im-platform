@@ -134,7 +134,11 @@ com.im.platform
 ├── sync/                          # 多端增量同步(按用户 seq 递增的 t_update_log,离线补偿的核心)
 ├── status/                        # 在线状态(Redis TTL,弱一致)
 ├── idgen/                         # 发号,纯内部组件(雪花算法变种)
-└── dfs/                           # 文件上传凭证(MinIO 预签名 URL)
+├── dfs/                           # 文件上传凭证(MinIO 预签名 URL)
+└── push/                          # 离线推送(APNs/FCM),跟 core/push 的在线推送是两条独立路径
+    ├── service/PushTokenService          # 设备 token 登记(t_push_token)
+    ├── service/OfflinePushTriggerService # 离线+未免打扰才触发,按用户名下每台设备分别转发
+    └── channel/OfflinePushChannel        # 厂商通道 SPI,默认只打日志,业务接真实 APNs/FCM 在这里扩展
 ```
 
 ## 长连接网关核心能力
@@ -323,6 +327,10 @@ java -jar im-gateway/target/im-gateway-1.0.0-SNAPSHOT.jar --spring.cloud.nacos.d
 
 **群组入群审核 + 禁言性能**(直连 im-core gRPC,不经过网关,300 组样本):`RequestJoinGroup`(OPEN 直接进群)avg 16.62ms / P99 24.28ms;`MuteMember` avg 12.50ms / P99 29.64ms;`GetGroupInfo` avg 3.03ms / P99 6.37ms——`RequestJoinGroup`/`MuteMember` 都是"整个 Group 聚合读出来改一处再整体重建成员表"的写路径(见 `GroupRepositoryImpl.save` 的实现取舍),比纯单行 upsert 慢一些但仍在预期范围内;群规模变大后如果这条路径成为瓶颈,可以优化成差量更新而不是整表重建。
 
+**离线推送(APNs/FCM 等厂商通道)**:跟在线推送(`PushPublisher`,Redis Pub/Sub,只有真的在线才投得出去)是两条独立路径。`MessageWriteService.send` 落库成功后,对每个收件人先查 `StatusService.isOnline`——在线的交给在线推送,不重复触发系统通知;不在线的再查这个会话是不是被这个用户设成免打扰(`ConversationSettingService.isMuted`,复用会话级配置那个功能,免打扰的直接跳过,不发离线推送),最后按用户名下登记的每台设备(`RegisterPushToken`,多端各自独立 token)分别转发给 `OfflinePushDispatcher`,按 `platform`(iOS/Android)路由到对应厂商通道。平台不内置任何一家厂商的真实 SDK 调用——APNs 证书、FCM service account 都是业务自己 App/Firebase 项目下的凭证,平台代码里没有也不该有;默认实现(`LoggingOfflinePushChannel`)只打日志,业务要接真实厂商,实现 `OfflinePushChannel` 接口、用同名 bean 覆盖默认值即可(`@ConditionalOnMissingBean(name=...)`,不用改调用链任何代码)。验证过四种场景:接收者离线且未注册免打扰 → 按登记的每台设备各触发一次(iOS + Android 两台设备各一条);接收者离线但对这个会话设置了免打扰 → 不触发;接收者在线 → 不触发(交给在线推送);`UnregisterPushToken` 之后那台设备不再收到离线推送。
+
+**离线推送性能**(直连 im-core gRPC,不经过网关,300 组样本):`RegisterPushToken` avg 5.56ms / P99 8.80ms;`SendMessage`(发给一个离线且注册了 token 的接收者,完整走一遍在线状态判断 + 免打扰判断 + token 查询 + dispatch 这条离线推送触发链路)avg 19.20ms / P99 31.86ms,跟不带离线推送触发的基线 `SendMessage` 数字(见上面"好友关系性能"一节的量级)基本一致,说明这条新增链路本身开销可以忽略不计。
+
 ## 数据层设计
 
 | 数据类型 | 存储 | 分片键 | 原因 |
@@ -332,6 +340,7 @@ java -jar im-gateway/target/im-gateway-1.0.0-SNAPSHOT.jar --spring.cloud.nacos.d
 | 会话表(`t_conversation`) | MySQL | 无 | `GetOrCreateSingleChat` 幂等,靠 `user_a`/`user_b` 唯一约束(小 ID 在前) |
 | 会话级用户偏好(`t_conversation_setting`) | MySQL | 无 | 键 `(user_id, chat_id)`,量级是"用户数 x 会话数",跟 `t_read_cursor` 同级别,不需要分片 |
 | 入群申请(`t_group_join_request`) | MySQL | 无 | 只有 `join_mode=APPROVAL` 的群才产生数据,量级远小于消息数据 |
+| 离线推送设备 token(`t_push_token`) | MySQL | 无 | 键 `(user_id, device_id)`,量级是"用户数 x 平均设备数",不需要分片 |
 
 幂等实现:发送消息前先查 Redis(`key = client_msg_id`,不区分 chat_id——真实客户端要保证 `client_msg_id` 全局唯一,这是幂等键设计的前提),命中直接返回上次落库结果,不重复写入。历史消息分页查询按 `chat_id` + `before_message_id` 游标分页(`PullHistory`,method_id=3002),不用 offset 避免深分页问题。
 

@@ -6,7 +6,7 @@ package com.im.platform.gateway.router;
  * 加一个常量,再去 MethodRegistry 里注册一行,不用改路由分发逻辑。
  *
  * 分段:1000 段 session,2000 段 biz.user,2100 段 biz.group,3000 段 msg,
- * 4000 段 sync,5000 段 status,6000 段 dfs。
+ * 4000 段 sync,5000 段 status,6000 段 dfs,7000 段 push。
  */
 public final class MethodIds {
 
@@ -64,6 +64,10 @@ public final class MethodIds {
     public static final int REQUEST_UPLOAD = 6001;
     public static final int COMPLETE_UPLOAD = 6002;
     public static final int GET_DOWNLOAD_URL = 6003;
+
+    // push(离线推送设备 token 登记)
+    public static final int REGISTER_PUSH_TOKEN = 7001;
+    public static final int UNREGISTER_PUSH_TOKEN = 7002;
 
     // 网关控制帧,纯本地处理,不转发给 im-core
     public static final int HEARTBEAT = 9001;

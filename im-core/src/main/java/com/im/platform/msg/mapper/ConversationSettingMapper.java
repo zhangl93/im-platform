@@ -25,6 +25,9 @@ public interface ConversationSettingMapper {
     @Select("SELECT chat_id, is_muted, is_pinned, updated_at FROM t_conversation_setting WHERE user_id = #{userId}")
     List<ConversationSettingRow> selectAllForUser(@Param("userId") long userId);
 
+    @Select("SELECT is_muted FROM t_conversation_setting WHERE user_id = #{userId} AND chat_id = #{chatId}")
+    Boolean selectIsMuted(@Param("userId") long userId, @Param("chatId") long chatId);
+
     class ConversationSettingRow {
         private Long chatId;
         private Boolean isMuted;

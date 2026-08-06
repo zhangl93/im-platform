@@ -36,6 +36,8 @@ import com.im.platform.msg.grpc.PullHistoryRequest;
 import com.im.platform.msg.grpc.SendMessageRequest;
 import com.im.platform.msg.grpc.UpdateConversationSettingRequest;
 import com.im.platform.msg.grpc.UpdateReadCursorRequest;
+import com.im.platform.push.grpc.RegisterPushTokenRequest;
+import com.im.platform.push.grpc.UnregisterPushTokenRequest;
 import com.im.platform.session.grpc.AuthRequest;
 import com.im.platform.session.grpc.CloseSessionRequest;
 import com.im.platform.session.grpc.ValidateSessionRequest;
@@ -112,6 +114,10 @@ public class MethodRegistry {
         register(MethodIds.REQUEST_UPLOAD, UploadRequest.parser(), core.file::requestUpload);
         register(MethodIds.COMPLETE_UPLOAD, CompleteUploadRequest.parser(), core.file::completeUpload);
         register(MethodIds.GET_DOWNLOAD_URL, GetDownloadUrlRequest.parser(), core.file::getDownloadUrl);
+
+        // push
+        register(MethodIds.REGISTER_PUSH_TOKEN, RegisterPushTokenRequest.parser(), core.pushToken::registerPushToken);
+        register(MethodIds.UNREGISTER_PUSH_TOKEN, UnregisterPushTokenRequest.parser(), core.pushToken::unregisterPushToken);
 
         // 网关控制帧:纯本地处理,不转发给 im-core,连 gRPC 通道都不占用
         register(MethodIds.HEARTBEAT, HeartbeatRequest.parser(),

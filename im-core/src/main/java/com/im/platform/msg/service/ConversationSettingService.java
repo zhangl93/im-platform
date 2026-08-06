@@ -36,4 +36,9 @@ public class ConversationSettingService {
     public List<ConversationSettingMapper.ConversationSettingRow> getSettings(long userId) {
         return conversationSettingMapper.selectAllForUser(userId);
     }
+
+    /** 行不存在就是没设置过,等价于默认值(不免打扰)。供离线推送触发前判断"这个用户要不要收这条会话的推送通知"用。 */
+    public boolean isMuted(long userId, long chatId) {
+        return Boolean.TRUE.equals(conversationSettingMapper.selectIsMuted(userId, chatId));
+    }
 }

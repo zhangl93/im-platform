@@ -4,6 +4,7 @@ import com.im.platform.biz.grpc.GroupServiceGrpc;
 import com.im.platform.biz.grpc.UserServiceGrpc;
 import com.im.platform.dfs.grpc.FileServiceGrpc;
 import com.im.platform.msg.grpc.MessageServiceGrpc;
+import com.im.platform.push.grpc.PushTokenServiceGrpc;
 import com.im.platform.session.grpc.SessionServiceGrpc;
 import com.im.platform.status.grpc.StatusServiceGrpc;
 import com.im.platform.sync.grpc.SyncServiceGrpc;
@@ -29,6 +30,7 @@ public class CoreGrpcClients {
     public final SyncServiceGrpc.SyncServiceBlockingStub sync;
     public final StatusServiceGrpc.StatusServiceBlockingStub status;
     public final FileServiceGrpc.FileServiceBlockingStub file;
+    public final PushTokenServiceGrpc.PushTokenServiceBlockingStub pushToken;
 
     public CoreGrpcClients(@Value("${core.grpc.host:127.0.0.1}") String host,
                             @Value("${core.grpc.port:9080}") int port) {
@@ -42,6 +44,7 @@ public class CoreGrpcClients {
         this.sync = SyncServiceGrpc.newBlockingStub(channel);
         this.status = StatusServiceGrpc.newBlockingStub(channel);
         this.file = FileServiceGrpc.newBlockingStub(channel);
+        this.pushToken = PushTokenServiceGrpc.newBlockingStub(channel);
     }
 
     @PreDestroy
