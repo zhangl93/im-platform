@@ -44,6 +44,7 @@ public final class MethodIds {
     public static final int MUTE_MEMBER = 2112;
     public static final int LEAVE_GROUP = 2113;
     public static final int GET_MY_GROUPS = 2114;
+    public static final int GET_GROUP_MEMBERS = 2115;
 
     // msg
     public static final int SEND_MESSAGE = 3001;

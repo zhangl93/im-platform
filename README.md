@@ -333,6 +333,10 @@ java -jar im-gateway/target/im-gateway-1.0.0-SNAPSHOT.jar --spring.cloud.nacos.d
 
 **自助退群(`LeaveGroup`)+ 我的群列表(`GetMyGroups`)**:一次业务全流程走查里发现的两个真实缺口——普通成员在没有 `LeaveGroup` 之前只能靠 `RemoveMember`,而这个 RPC 天然要求 operator 有管理权限,导致"自己退出一个群"这件基本操作实际上做不到(唯一出路是求管理员把自己踢出去);同理,客户端要展示"我的群聊"列表时,`GetGroupInfo` 要求已经知道 `group_id`,没有反向查询"我在哪些群里"的接口。修复思路是共享现有不变量而不是重新发明一套:`Group.leaveGroup(userId)` 和 `removeMember` 都走同一个 `removeMemberInternal`,区别只是前者不经过 `requireManager` 权限门槛——但 OWNER 依然不能不转让就退群,这条规则两边一致,不因为是自己走就放松,否则群会变成没有群主的孤儿状态。`GetMyGroups` 走 `t_group_member` 反查 `group_id` 列表再逐个加载完整 `Group`(群数量级远小于消息量级,不需要为了省这几次查询单独设计一个轻量摘要投影)。已通过真实网关协议(X25519 握手 + AES-GCM 加密,不是直连 im-core gRPC 的走捷径验证方式)重现原始失败场景并确认修复:普通成员自助退群成功、OWNER 未转让时退群仍被拒绝、`GetMyGroups` 返回的群列表跟实际成员关系精确匹配。
 
+**消息发送拉黑校验**:`BlockUser` 此前只在加群(`GroupApplicationService.addMember`)和加好友(`FriendshipApplicationService.sendFriendRequest`)两处校验过,`SendMessage` 这条链路完全没查——被拉黑的人依然能正常给你发 1:1 消息,是个实打实的安全缺口,不是"锦上添花"的功能。新增 `SingleChatBlockGuard`,跟 `GroupMuteGuard` 是同一个模式(消息发送链路里挂一层轻量检查,判断逻辑委托给已有的领域对象,不重复业务规则):只对单聊生效(`chat_id` 解析成 `t_conversation` 行而不是 `group_id`),检查接收方是否拉黑了发送方。群消息不受影响——群成员身份本身就是双方认可的,不因为其中两个人之间有私下拉黑关系就不让群消息发出去,否则每条群消息都要对全体成员做一次拉黑检查,语义上也不对。拉黑是单向的:B 拉黑 A 后 A 不能再给 B 发消息,但 B 仍可以给 A 发(跟主流 IM 的拉黑语义一致,不因为一方拉黑就双向断开)。已通过真实网关协议验证:拉黑后发送方被拒绝、拉黑方反向发送仍然成功、群消息不受拉黑关系影响。
+
+**群成员列表(`GetGroupMembers`)**:`GroupInfo` 此前只暴露 `member_count`,没有任何 RPC 能拿到实际成员名单——客户端连"群成员列表"这个最基础的 UI 都画不出来。新增 `GetGroupMembers`,直接复用 `Group.getMembers()`(不新增应用层方法,`GroupGrpcService` 复用已有的 `groupApplicationService.getGroup()`),返回每个成员的 `user_id`/`role`/`joined_at`/`muted_until`/`ex`。没有做分页——群规模本来就有 `GroupPolicy.maxMemberCount` 硬上限兜底,量级到需要分页时再加。已通过真实网关协议验证:建群后只有群主一人、加人后成员列表和角色都正确、成员退群后列表同步更新。
+
 ## 数据层设计
 
 | 数据类型 | 存储 | 分片键 | 原因 |

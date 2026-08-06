@@ -31,6 +31,8 @@ service GroupService {
   // 这个用户当前所在的全部群,客户端"我的群聊"列表的数据来源——GetGroupInfo 要求已经知道
   // group_id,这个接口反过来回答"我在哪些群里"。
   rpc GetMyGroups(GetMyGroupsRequest) returns (GroupInfoList);
+  // GroupInfo 只有 member_count,没有成员明细——客户端画"群成员列表"这个基础 UI 需要这个接口。
+  rpc GetGroupMembers(GetGroupMembersRequest) returns (GroupMemberList);
   // 用户自己申请入群。join_mode=OPEN 直接进群(joined_immediately=true);
   // APPROVAL 模式下建一条待审批申请,需要管理员走 HandleJoinRequest。
   rpc RequestJoinGroup(RequestJoinGroupRequest) returns (RequestJoinGroupResponse);
@@ -204,6 +206,22 @@ message GetMyGroupsRequest {
 
 message GroupInfoList {
   repeated GroupInfo groups = 1;
+}
+
+message GetGroupMembersRequest {
+  int64 group_id = 1;
+}
+
+message GroupMemberInfo {
+  int64 user_id = 1;
+  int32 role = 2;         // OWNER / ADMIN / MEMBER,枚举顺序与 GroupRole 一致(同 UpdateMemberRoleRequest.role 的约定)
+  int64 joined_at = 3;
+  int64 muted_until = 4;  // 0 表示未禁言
+  string ex = 5;
+}
+
+message GroupMemberList {
+  repeated GroupMemberInfo members = 1;
 }
 
 message RequestJoinGroupRequest {

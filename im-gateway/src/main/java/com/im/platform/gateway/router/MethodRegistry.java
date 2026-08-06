@@ -8,6 +8,7 @@ import com.im.platform.biz.grpc.CreateGroupRequest;
 import com.im.platform.biz.grpc.GetContactsRequest;
 import com.im.platform.biz.grpc.GetFriendRequestsRequest;
 import com.im.platform.biz.grpc.GetGroupInfoRequest;
+import com.im.platform.biz.grpc.GetGroupMembersRequest;
 import com.im.platform.biz.grpc.GetJoinRequestsRequest;
 import com.im.platform.biz.grpc.GetMyGroupsRequest;
 import com.im.platform.biz.grpc.GetUserRequest;
@@ -96,6 +97,7 @@ public class MethodRegistry {
         register(MethodIds.MUTE_MEMBER, MuteMemberRequest.parser(), core.group::muteMember);
         register(MethodIds.LEAVE_GROUP, LeaveGroupRequest.parser(), core.group::leaveGroup);
         register(MethodIds.GET_MY_GROUPS, GetMyGroupsRequest.parser(), core.group::getMyGroups);
+        register(MethodIds.GET_GROUP_MEMBERS, GetGroupMembersRequest.parser(), core.group::getGroupMembers);
 
         // msg
         register(MethodIds.SEND_MESSAGE, SendMessageRequest.parser(), core.message::sendMessage);

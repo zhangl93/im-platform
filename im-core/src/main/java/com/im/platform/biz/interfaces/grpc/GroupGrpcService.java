@@ -3,11 +3,13 @@ package com.im.platform.biz.interfaces.grpc;
 import com.im.platform.biz.application.GroupApplicationService;
 import com.im.platform.biz.domain.group.Group;
 import com.im.platform.biz.domain.group.GroupJoinRequestRecord;
+import com.im.platform.biz.domain.group.GroupMember;
 import com.im.platform.biz.domain.group.GroupRole;
 import com.im.platform.biz.domain.group.JoinGroupResult;
 import com.im.platform.biz.grpc.AddMemberRequest;
 import com.im.platform.biz.grpc.CreateGroupRequest;
 import com.im.platform.biz.grpc.GetGroupInfoRequest;
+import com.im.platform.biz.grpc.GetGroupMembersRequest;
 import com.im.platform.biz.grpc.GetJoinRequestsRequest;
 import com.im.platform.biz.grpc.GetMyGroupsRequest;
 import com.im.platform.biz.grpc.GroupInfo;
@@ -15,6 +17,8 @@ import com.im.platform.biz.grpc.GroupInfoList;
 import com.im.platform.biz.grpc.GroupJoinRequestInfo;
 import com.im.platform.biz.grpc.GroupJoinRequestList;
 import com.im.platform.biz.grpc.GroupJoinRequestStatus;
+import com.im.platform.biz.grpc.GroupMemberInfo;
+import com.im.platform.biz.grpc.GroupMemberList;
 import com.im.platform.biz.grpc.GroupServiceGrpc;
 import com.im.platform.biz.grpc.HandleJoinRequestRequest;
 import com.im.platform.biz.grpc.LeaveGroupRequest;
@@ -86,6 +90,23 @@ public class GroupGrpcService extends GroupServiceGrpc.GroupServiceImplBase {
         GroupInfoList.Builder builder = GroupInfoList.newBuilder();
         for (Group group : groups) {
             builder.addGroups(toProto(group));
+        }
+        responseObserver.onNext(builder.build());
+        responseObserver.onCompleted();
+    }
+
+    @Override
+    public void getGroupMembers(GetGroupMembersRequest request, StreamObserver<GroupMemberList> responseObserver) {
+        Group group = groupApplicationService.getGroup(request.getGroupId());
+        GroupMemberList.Builder builder = GroupMemberList.newBuilder();
+        for (GroupMember member : group.getMembers()) {
+            builder.addMembers(GroupMemberInfo.newBuilder()
+                    .setUserId(member.getUserId())
+                    .setRole(member.getRole().ordinal())
+                    .setJoinedAt(member.getJoinedAt())
+                    .setMutedUntil(member.getMutedUntil())
+                    .setEx(member.getEx() == null ? "" : member.getEx())
+                    .build());
         }
         responseObserver.onNext(builder.build());
         responseObserver.onCompleted();
