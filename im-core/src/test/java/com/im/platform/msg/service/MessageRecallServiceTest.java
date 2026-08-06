@@ -115,4 +115,41 @@ class MessageRecallServiceTest {
                 .satisfies(e -> org.assertj.core.api.Assertions.assertThat(((BizException) e).getErrorCode())
                         .isEqualTo(ErrorCode.MESSAGE_NOT_FOUND));
     }
+
+    @Test
+    void recall_chatIdMismatch_rejected() {
+        // 消息真实所在的会话是 CHAT_ID,调用方却声称是 OTHER_CHAT_ID —— 不能通过伪造 chat_id
+        // 让撤回通知广播给一个不相关会话的参与者。
+        long otherChatId = 999L;
+        MessageStore messageStore = mock(MessageStore.class);
+        RecipientResolver recipientResolver = mock(RecipientResolver.class);
+        UpdateLogService updateLogService = mock(UpdateLogService.class);
+        when(messageStore.findById(otherChatId, MESSAGE_ID)).thenReturn(newMessage(System.currentTimeMillis(), false));
+
+        MessageRecallService service = new MessageRecallService(messageStore, recipientResolver, updateLogService);
+
+        assertThatThrownBy(() -> service.recall(otherChatId, SENDER, MESSAGE_ID))
+                .isInstanceOf(BizException.class)
+                .satisfies(e -> org.assertj.core.api.Assertions.assertThat(((BizException) e).getErrorCode())
+                        .isEqualTo(ErrorCode.MESSAGE_NOT_FOUND));
+        verify(messageStore, never()).markRecalled(otherChatId, MESSAGE_ID);
+        verify(recipientResolver, never()).resolveRecipients(org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.anyLong());
+    }
+
+    @Test
+    void recall_alreadyRecalled_byNonOwner_stillRejected() {
+        // 幂等短路必须排在权限校验之后:已经撤回过的消息,非发送者调用不能返回成功
+        // (那样等于绕过"只有发送者能撤回"、还能被当成探测撤回状态的 oracle)。
+        MessageStore messageStore = mock(MessageStore.class);
+        RecipientResolver recipientResolver = mock(RecipientResolver.class);
+        UpdateLogService updateLogService = mock(UpdateLogService.class);
+        when(messageStore.findById(CHAT_ID, MESSAGE_ID)).thenReturn(newMessage(System.currentTimeMillis(), true));
+
+        MessageRecallService service = new MessageRecallService(messageStore, recipientResolver, updateLogService);
+
+        assertThatThrownBy(() -> service.recall(CHAT_ID, OTHER_USER, MESSAGE_ID))
+                .isInstanceOf(BizException.class)
+                .satisfies(e -> org.assertj.core.api.Assertions.assertThat(((BizException) e).getErrorCode())
+                        .isEqualTo(ErrorCode.MESSAGE_RECALL_NOT_OWNER));
+    }
 }

@@ -38,14 +38,21 @@ public class MessageRecallService {
 
     public void recall(long chatId, long userId, long messageId) {
         MessageEntity message = messageStore.findById(chatId, messageId);
-        if (message == null) {
+        // chatId 是调用方自己声称的,必须跟消息实际所在的会话一致——否则拿一条自己在别处发过的
+        // 消息、配一个不相关的 chatId,就能让撤回通知广播给那个不相关会话的参与者(见 code review)。
+        // 找不到消息、或者 chatId 对不上,统一当成"这个会话里没有这条消息",跟 findById 的
+        // not-found 语义一致,不额外区分。
+        if (message == null || message.getChatId() == null || message.getChatId() != chatId) {
             throw new BizException(ErrorCode.MESSAGE_NOT_FOUND);
         }
-        if (Boolean.TRUE.equals(message.getRecalled())) {
-            return; // 已经撤回过,幂等直接返回,跟本项目其它写操作的幂等约定一致
-        }
+        // 权限校验必须排在幂等短路之前——不然"已经撤回过"这个状态会让任何人(不只是发送者)
+        // 调用都返回成功,等于绕过了"只有发送者能撤回"这条规则,也让非发送者能靠返回值探测
+        // 一条消息是否已经被撤回。
         if (message.getSenderId() == null || message.getSenderId() != userId) {
             throw new BizException(ErrorCode.MESSAGE_RECALL_NOT_OWNER);
+        }
+        if (Boolean.TRUE.equals(message.getRecalled())) {
+            return; // 发送者本人重复撤回,幂等直接返回,跟本项目其它写操作的幂等约定一致
         }
         if (System.currentTimeMillis() - message.getServerTime() > RECALL_WINDOW.toMillis()) {
             throw new BizException(ErrorCode.MESSAGE_RECALL_WINDOW_EXPIRED);
