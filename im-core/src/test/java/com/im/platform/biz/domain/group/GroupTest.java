@@ -129,4 +129,14 @@ class GroupTest {
         Group group = newGroupWithAdminAndMember(now);
         assertThatThrownBy(() -> group.leaveGroup(9999L)).isInstanceOf(BizException.class);
     }
+
+    @Test
+    void isMember_currentMembersTrue_othersFalse() {
+        long now = System.currentTimeMillis();
+        Group group = newGroupWithAdminAndMember(now);
+        assertThat(group.isMember(OWNER)).isTrue();
+        assertThat(group.isMember(ADMIN)).isTrue();
+        assertThat(group.isMember(MEMBER)).isTrue();
+        assertThat(group.isMember(9999L)).isFalse();
+    }
 }

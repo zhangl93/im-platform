@@ -22,6 +22,7 @@ public enum ErrorCode {
     GROUP_JOIN_NOT_OPEN(2104, "group requires approval to join"),
     GROUP_JOIN_REQUEST_NOT_FOUND(2105, "group join request not found"),
     GROUP_MEMBER_MUTED(2106, "sender is muted in this group"),
+    GROUP_NOT_MEMBER(2107, "operator is not a member of this group"),
 
     MESSAGE_SEND_FAILED(3001, "message send failed"),
     MESSAGE_NOT_FOUND(3002, "message not found"),

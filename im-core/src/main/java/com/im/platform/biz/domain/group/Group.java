@@ -220,6 +220,11 @@ public class Group {
         return findMember(userId).map(m -> m.getRole() != GroupRole.MEMBER).orElse(false);
     }
 
+    /** 这个用户现在是不是群成员——供只读接口做"只有群成员能看"这类权限判断(比如 GetGroupMembers)。 */
+    public boolean isMember(long userId) {
+        return findMember(userId).isPresent();
+    }
+
     public GroupJoinMode getJoinMode() {
         return joinMode;
     }

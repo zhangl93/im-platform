@@ -97,9 +97,9 @@ public class GroupGrpcService extends GroupServiceGrpc.GroupServiceImplBase {
 
     @Override
     public void getGroupMembers(GetGroupMembersRequest request, StreamObserver<GroupMemberList> responseObserver) {
-        Group group = groupApplicationService.getGroup(request.getGroupId());
+        List<GroupMember> members = groupApplicationService.getGroupMembers(request.getGroupId(), request.getOperatorId());
         GroupMemberList.Builder builder = GroupMemberList.newBuilder();
-        for (GroupMember member : group.getMembers()) {
+        for (GroupMember member : members) {
             builder.addMembers(GroupMemberInfo.newBuilder()
                     .setUserId(member.getUserId())
                     .setRole(member.getRole().ordinal())

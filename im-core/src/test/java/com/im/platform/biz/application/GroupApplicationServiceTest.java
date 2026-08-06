@@ -1,11 +1,13 @@
 package com.im.platform.biz.application;
 
 import com.im.platform.biz.domain.group.Group;
+import com.im.platform.biz.domain.group.GroupMember;
 import com.im.platform.biz.domain.group.GroupRepository;
 import com.im.platform.biz.domain.user.UserRepository;
 import com.im.platform.biz.infrastructure.persistence.GroupJoinRequestPO;
 import com.im.platform.biz.infrastructure.persistence.mapper.GroupJoinRequestMapper;
 import com.im.platform.common.core.exception.BizException;
+import com.im.platform.common.core.exception.ErrorCode;
 import com.im.platform.biz.domain.group.JoinGroupResult;
 import com.im.platform.idgen.IdGenClient;
 import org.junit.jupiter.api.Test;
@@ -252,5 +254,41 @@ class GroupApplicationServiceTest {
         java.util.List<Group> result = service.getMyGroups(9009L);
 
         assertThat(result).containsExactly(groupA);
+    }
+
+    @Test
+    void getGroupMembers_operatorIsMember_returnsFullRoster() {
+        GroupRepository groupRepository = mock(GroupRepository.class);
+        UserRepository userRepository = mock(UserRepository.class);
+        GroupJoinRequestMapper groupJoinRequestMapper = mock(GroupJoinRequestMapper.class);
+        IdGenClient idGenClient = mock(IdGenClient.class);
+        long now = System.currentTimeMillis();
+        Group group = Group.create(720L, "g", 9001L, now, "");
+        group.addMember(9001L, 9002L, now);
+        when(groupRepository.findById(720L)).thenReturn(Optional.of(group));
+
+        GroupApplicationService service = new GroupApplicationService(
+                groupRepository, userRepository, groupJoinRequestMapper, idGenClient);
+        java.util.List<GroupMember> members = service.getGroupMembers(720L, 9002L);
+
+        assertThat(members).extracting(GroupMember::getUserId).containsExactlyInAnyOrder(9001L, 9002L);
+    }
+
+    @Test
+    void getGroupMembers_operatorNotMember_rejected() {
+        GroupRepository groupRepository = mock(GroupRepository.class);
+        UserRepository userRepository = mock(UserRepository.class);
+        GroupJoinRequestMapper groupJoinRequestMapper = mock(GroupJoinRequestMapper.class);
+        IdGenClient idGenClient = mock(IdGenClient.class);
+        long now = System.currentTimeMillis();
+        Group group = Group.create(721L, "g", 9001L, now, "");
+        when(groupRepository.findById(721L)).thenReturn(Optional.of(group));
+
+        GroupApplicationService service = new GroupApplicationService(
+                groupRepository, userRepository, groupJoinRequestMapper, idGenClient);
+
+        assertThatThrownBy(() -> service.getGroupMembers(721L, 9999L))
+                .isInstanceOf(BizException.class)
+                .satisfies(e -> assertThat(((BizException) e).getErrorCode()).isEqualTo(ErrorCode.GROUP_NOT_MEMBER));
     }
 }

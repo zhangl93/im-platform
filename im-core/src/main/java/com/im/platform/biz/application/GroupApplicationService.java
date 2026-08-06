@@ -5,6 +5,7 @@ import com.im.platform.biz.domain.group.Group;
 import com.im.platform.biz.domain.group.GroupJoinMode;
 import com.im.platform.biz.domain.group.GroupJoinRequestRecord;
 import com.im.platform.biz.domain.group.GroupJoinRequestStatus;
+import com.im.platform.biz.domain.group.GroupMember;
 import com.im.platform.biz.domain.group.GroupRepository;
 import com.im.platform.biz.domain.group.GroupRole;
 import com.im.platform.biz.domain.group.JoinGroupResult;
@@ -98,6 +99,16 @@ public class GroupApplicationService {
                 .filter(Optional::isPresent)
                 .map(Optional::get)
                 .collect(Collectors.toList());
+    }
+
+    /** 群成员名单(含每个人的角色、禁言状态),只有群成员本人能看——完整名单比 GroupInfo
+     * 暴露的 member_count 敏感得多,不能对任意调用方开放(见架构评审发现的授权缺口)。 */
+    public List<GroupMember> getGroupMembers(long groupId, long operatorId) {
+        Group group = getGroup(groupId);
+        if (!group.isMember(operatorId)) {
+            throw new BizException(ErrorCode.GROUP_NOT_MEMBER);
+        }
+        return group.getMembers();
     }
 
     @Transactional

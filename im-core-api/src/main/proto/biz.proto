@@ -32,6 +32,7 @@ service GroupService {
   // group_id,这个接口反过来回答"我在哪些群里"。
   rpc GetMyGroups(GetMyGroupsRequest) returns (GroupInfoList);
   // GroupInfo 只有 member_count,没有成员明细——客户端画"群成员列表"这个基础 UI 需要这个接口。
+  // operator_id 必须是这个群的成员,否则拒绝——完整成员名单(含每个人的禁言状态)不该对非成员开放。
   rpc GetGroupMembers(GetGroupMembersRequest) returns (GroupMemberList);
   // 用户自己申请入群。join_mode=OPEN 直接进群(joined_immediately=true);
   // APPROVAL 模式下建一条待审批申请,需要管理员走 HandleJoinRequest。
@@ -210,6 +211,7 @@ message GroupInfoList {
 
 message GetGroupMembersRequest {
   int64 group_id = 1;
+  int64 operator_id = 2; // 必须是这个群的成员——见 GroupApplicationService.getGroupMembers
 }
 
 message GroupMemberInfo {
