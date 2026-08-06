@@ -9,12 +9,15 @@ import com.im.platform.biz.grpc.AddMemberRequest;
 import com.im.platform.biz.grpc.CreateGroupRequest;
 import com.im.platform.biz.grpc.GetGroupInfoRequest;
 import com.im.platform.biz.grpc.GetJoinRequestsRequest;
+import com.im.platform.biz.grpc.GetMyGroupsRequest;
 import com.im.platform.biz.grpc.GroupInfo;
+import com.im.platform.biz.grpc.GroupInfoList;
 import com.im.platform.biz.grpc.GroupJoinRequestInfo;
 import com.im.platform.biz.grpc.GroupJoinRequestList;
 import com.im.platform.biz.grpc.GroupJoinRequestStatus;
 import com.im.platform.biz.grpc.GroupServiceGrpc;
 import com.im.platform.biz.grpc.HandleJoinRequestRequest;
+import com.im.platform.biz.grpc.LeaveGroupRequest;
 import com.im.platform.biz.grpc.MuteMemberRequest;
 import com.im.platform.biz.grpc.RemoveMemberRequest;
 import com.im.platform.biz.grpc.RequestJoinGroupRequest;
@@ -67,6 +70,24 @@ public class GroupGrpcService extends GroupServiceGrpc.GroupServiceImplBase {
     public void removeMember(RemoveMemberRequest request, StreamObserver<Empty> responseObserver) {
         groupApplicationService.removeMember(request.getGroupId(), request.getOperatorId(), request.getTargetUserId());
         responseObserver.onNext(Empty.getDefaultInstance());
+        responseObserver.onCompleted();
+    }
+
+    @Override
+    public void leaveGroup(LeaveGroupRequest request, StreamObserver<Empty> responseObserver) {
+        groupApplicationService.leaveGroup(request.getGroupId(), request.getUserId());
+        responseObserver.onNext(Empty.getDefaultInstance());
+        responseObserver.onCompleted();
+    }
+
+    @Override
+    public void getMyGroups(GetMyGroupsRequest request, StreamObserver<GroupInfoList> responseObserver) {
+        List<Group> groups = groupApplicationService.getMyGroups(request.getUserId());
+        GroupInfoList.Builder builder = GroupInfoList.newBuilder();
+        for (Group group : groups) {
+            builder.addGroups(toProto(group));
+        }
+        responseObserver.onNext(builder.build());
         responseObserver.onCompleted();
     }
 

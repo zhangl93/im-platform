@@ -23,8 +23,14 @@ service GroupService {
   rpc TransferOwner(TransferOwnerRequest) returns (im.platform.common.Empty); // 核心领域规则:群主转让校验
   rpc AddMember(AddMemberRequest) returns (im.platform.common.Empty);         // 校验成员上限、拉黑关系等不变量
   rpc RemoveMember(RemoveMemberRequest) returns (im.platform.common.Empty);
+  // 用户自己退群,跟 RemoveMember 的区别是不要求 operator 有管理权限——谁都能对自己发起,
+  // 但 OWNER 身份依然必须先 TransferOwner,规则跟被别人移除时一致。
+  rpc LeaveGroup(LeaveGroupRequest) returns (im.platform.common.Empty);
   rpc UpdateMemberRole(UpdateMemberRoleRequest) returns (im.platform.common.Empty);
   rpc GetGroupInfo(GetGroupInfoRequest) returns (GroupInfo);
+  // 这个用户当前所在的全部群,客户端"我的群聊"列表的数据来源——GetGroupInfo 要求已经知道
+  // group_id,这个接口反过来回答"我在哪些群里"。
+  rpc GetMyGroups(GetMyGroupsRequest) returns (GroupInfoList);
   // 用户自己申请入群。join_mode=OPEN 直接进群(joined_immediately=true);
   // APPROVAL 模式下建一条待审批申请,需要管理员走 HandleJoinRequest。
   rpc RequestJoinGroup(RequestJoinGroupRequest) returns (RequestJoinGroupResponse);
@@ -176,6 +182,11 @@ message RemoveMemberRequest {
   int64 target_user_id = 3;
 }
 
+message LeaveGroupRequest {
+  int64 group_id = 1;
+  int64 user_id = 2;
+}
+
 message UpdateMemberRoleRequest {
   int64 group_id = 1;
   int64 operator_id = 2;
@@ -185,6 +196,14 @@ message UpdateMemberRoleRequest {
 
 message GetGroupInfoRequest {
   int64 group_id = 1;
+}
+
+message GetMyGroupsRequest {
+  int64 user_id = 1;
+}
+
+message GroupInfoList {
+  repeated GroupInfo groups = 1;
 }
 
 message RequestJoinGroupRequest {

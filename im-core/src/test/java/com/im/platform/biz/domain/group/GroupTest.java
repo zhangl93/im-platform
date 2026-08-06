@@ -106,4 +106,27 @@ class GroupTest {
         assertThat(group.isManager(MEMBER)).isFalse();
         assertThat(group.isManager(9999L)).isFalse();
     }
+
+    @Test
+    void leaveGroup_plainMemberLeaves_succeeds() {
+        long now = System.currentTimeMillis();
+        Group group = newGroupWithAdminAndMember(now);
+        group.leaveGroup(MEMBER);
+        assertThat(group.getMembers()).noneMatch(m -> m.getUserId() == MEMBER);
+    }
+
+    @Test
+    void leaveGroup_ownerRejected() {
+        long now = System.currentTimeMillis();
+        Group group = newGroupWithAdminAndMember(now);
+        assertThatThrownBy(() -> group.leaveGroup(OWNER)).isInstanceOf(BizException.class);
+        assertThat(group.getMembers()).anyMatch(m -> m.getUserId() == OWNER);
+    }
+
+    @Test
+    void leaveGroup_nonMemberRejected() {
+        long now = System.currentTimeMillis();
+        Group group = newGroupWithAdminAndMember(now);
+        assertThatThrownBy(() -> group.leaveGroup(9999L)).isInstanceOf(BizException.class);
+    }
 }

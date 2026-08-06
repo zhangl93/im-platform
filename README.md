@@ -331,6 +331,8 @@ java -jar im-gateway/target/im-gateway-1.0.0-SNAPSHOT.jar --spring.cloud.nacos.d
 
 **离线推送性能**(直连 im-core gRPC,不经过网关,300 组样本):`RegisterPushToken` avg 5.56ms / P99 8.80ms;`SendMessage`(发给一个离线且注册了 token 的接收者,完整走一遍在线状态判断 + 免打扰判断 + token 查询 + dispatch 这条离线推送触发链路)avg 19.20ms / P99 31.86ms,跟不带离线推送触发的基线 `SendMessage` 数字(见上面"好友关系性能"一节的量级)基本一致,说明这条新增链路本身开销可以忽略不计。
 
+**自助退群(`LeaveGroup`)+ 我的群列表(`GetMyGroups`)**:一次业务全流程走查里发现的两个真实缺口——普通成员在没有 `LeaveGroup` 之前只能靠 `RemoveMember`,而这个 RPC 天然要求 operator 有管理权限,导致"自己退出一个群"这件基本操作实际上做不到(唯一出路是求管理员把自己踢出去);同理,客户端要展示"我的群聊"列表时,`GetGroupInfo` 要求已经知道 `group_id`,没有反向查询"我在哪些群里"的接口。修复思路是共享现有不变量而不是重新发明一套:`Group.leaveGroup(userId)` 和 `removeMember` 都走同一个 `removeMemberInternal`,区别只是前者不经过 `requireManager` 权限门槛——但 OWNER 依然不能不转让就退群,这条规则两边一致,不因为是自己走就放松,否则群会变成没有群主的孤儿状态。`GetMyGroups` 走 `t_group_member` 反查 `group_id` 列表再逐个加载完整 `Group`(群数量级远小于消息量级,不需要为了省这几次查询单独设计一个轻量摘要投影)。已通过真实网关协议(X25519 握手 + AES-GCM 加密,不是直连 im-core gRPC 的走捷径验证方式)重现原始失败场景并确认修复:普通成员自助退群成功、OWNER 未转让时退群仍被拒绝、`GetMyGroups` 返回的群列表跟实际成员关系精确匹配。
+
 ## 数据层设计
 
 | 数据类型 | 存储 | 分片键 | 原因 |

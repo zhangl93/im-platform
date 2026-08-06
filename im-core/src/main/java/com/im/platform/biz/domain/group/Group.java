@@ -11,7 +11,8 @@ import java.util.Optional;
  * Group 聚合根,群相关的业务不变量全部收敛在这里:
  * - 群主转让必须由当前群主发起,且目标必须已是群成员
  * - 加人受成员上限约束
- * - 移除/改角色必须由 OWNER 或 ADMIN 操作,且不能移除/降级 OWNER 本身(需先转让)
+ * - 移除/改角色必须由 OWNER 或 ADMIN 操作,且不能移除/降级 OWNER 本身(需先转让);
+ *   自己退群(leaveGroup)不受此权限约束,但同样不能是 OWNER 身份(需先转让)
  * - 入群模式(joinMode)控制 selfJoin 是否直接放行,还是必须走 GroupJoinRequest 审核
  * - 禁言分两层:groupMuted 全员禁言(OWNER/ADMIN 不受影响)、单个成员的 mutedUntil 定点禁言
  *
@@ -91,6 +92,19 @@ public class Group {
 
     public void removeMember(long operatorId, long targetUserId) {
         requireManager(operatorId);
+        removeMemberInternal(targetUserId);
+    }
+
+    /**
+     * 用户自己退群,不校验操作权限——权限检查是防"别人把我踢出去",自己对自己没有权限门槛。
+     * OWNER 依然必须先转让群主(跟被别人移除时同一条规则,不因为是自己走就放松,不然群会变成
+     * 没有群主的孤儿状态)。
+     */
+    public void leaveGroup(long userId) {
+        removeMemberInternal(userId);
+    }
+
+    private void removeMemberInternal(long targetUserId) {
         GroupMember target = requireMember(targetUserId);
         if (target.getRole() == GroupRole.OWNER) {
             throw new BizException(ErrorCode.GROUP_OWNER_TRANSFER_INVALID, "owner must transfer ownership before leaving");

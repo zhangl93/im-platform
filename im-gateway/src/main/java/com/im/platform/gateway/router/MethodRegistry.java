@@ -9,9 +9,11 @@ import com.im.platform.biz.grpc.GetContactsRequest;
 import com.im.platform.biz.grpc.GetFriendRequestsRequest;
 import com.im.platform.biz.grpc.GetGroupInfoRequest;
 import com.im.platform.biz.grpc.GetJoinRequestsRequest;
+import com.im.platform.biz.grpc.GetMyGroupsRequest;
 import com.im.platform.biz.grpc.GetUserRequest;
 import com.im.platform.biz.grpc.HandleFriendRequestRequest;
 import com.im.platform.biz.grpc.HandleJoinRequestRequest;
+import com.im.platform.biz.grpc.LeaveGroupRequest;
 import com.im.platform.biz.grpc.MuteMemberRequest;
 import com.im.platform.biz.grpc.RemoveFriendRequest;
 import com.im.platform.biz.grpc.RemoveMemberRequest;
@@ -92,6 +94,8 @@ public class MethodRegistry {
         register(MethodIds.UPDATE_JOIN_MODE, UpdateJoinModeRequest.parser(), core.group::updateJoinMode);
         register(MethodIds.UPDATE_GROUP_MUTE_ALL, UpdateGroupMuteAllRequest.parser(), core.group::updateGroupMuteAll);
         register(MethodIds.MUTE_MEMBER, MuteMemberRequest.parser(), core.group::muteMember);
+        register(MethodIds.LEAVE_GROUP, LeaveGroupRequest.parser(), core.group::leaveGroup);
+        register(MethodIds.GET_MY_GROUPS, GetMyGroupsRequest.parser(), core.group::getMyGroups);
 
         // msg
         register(MethodIds.SEND_MESSAGE, SendMessageRequest.parser(), core.message::sendMessage);

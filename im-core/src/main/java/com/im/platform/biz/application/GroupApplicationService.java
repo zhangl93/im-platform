@@ -20,6 +20,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
@@ -78,6 +79,25 @@ public class GroupApplicationService {
         Group group = getGroup(groupId);
         group.removeMember(operatorId, targetUserId);
         groupRepository.save(group);
+    }
+
+    /** 用户自己退群,跟 removeMember 的区别是不要求 operator 有管理权限——见 Group.leaveGroup。 */
+    @Transactional
+    public void leaveGroup(long groupId, long userId) {
+        Group group = getGroup(groupId);
+        group.leaveGroup(userId);
+        groupRepository.save(group);
+    }
+
+    /** 这个用户当前所在的全部群,用于客户端"我的群聊"列表。跟 FriendshipApplicationService.getFriends
+     * 同样的取舍:先查出 group_id 列表,再逐个加载完整 Group——群数量级远小于消息量级,不需要为了
+     * 省这几次查询单独设计一个"轻量群摘要"投影。 */
+    public List<Group> getMyGroups(long userId) {
+        return groupRepository.findGroupIdsByUserId(userId).stream()
+                .map(groupRepository::findById)
+                .filter(Optional::isPresent)
+                .map(Optional::get)
+                .collect(Collectors.toList());
     }
 
     @Transactional

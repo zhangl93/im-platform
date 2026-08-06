@@ -42,6 +42,8 @@ public final class MethodIds {
     public static final int UPDATE_JOIN_MODE = 2110;
     public static final int UPDATE_GROUP_MUTE_ALL = 2111;
     public static final int MUTE_MEMBER = 2112;
+    public static final int LEAVE_GROUP = 2113;
+    public static final int GET_MY_GROUPS = 2114;
 
     // msg
     public static final int SEND_MESSAGE = 3001;

@@ -54,6 +54,15 @@ public class GroupRepositoryImpl implements GroupRepository {
     }
 
     @Override
+    public List<Long> findGroupIdsByUserId(long userId) {
+        return groupMemberMapper.selectList(
+                        new LambdaQueryWrapper<GroupMemberPO>().eq(GroupMemberPO::getUserId, userId))
+                .stream()
+                .map(GroupMemberPO::getGroupId)
+                .collect(Collectors.toList());
+    }
+
+    @Override
     public long nextGroupId() {
         return idGenClient.generateId(BizType.GROUP_ID);
     }

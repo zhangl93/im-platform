@@ -178,4 +178,79 @@ class GroupApplicationServiceTest {
         assertThat(group.isMuted(9006L, now + 30_000)).isTrue();
         assertThat(group.isMuted(9006L, now + 60_001)).isFalse();
     }
+
+    @Test
+    void leaveGroup_delegatesToDomainAndPersists() {
+        GroupRepository groupRepository = mock(GroupRepository.class);
+        UserRepository userRepository = mock(UserRepository.class);
+        GroupJoinRequestMapper groupJoinRequestMapper = mock(GroupJoinRequestMapper.class);
+        IdGenClient idGenClient = mock(IdGenClient.class);
+        long now = System.currentTimeMillis();
+        Group group = Group.create(705L, "g", 9001L, now, "");
+        group.addMember(9001L, 9007L, now);
+        when(groupRepository.findById(705L)).thenReturn(Optional.of(group));
+
+        GroupApplicationService service = new GroupApplicationService(
+                groupRepository, userRepository, groupJoinRequestMapper, idGenClient);
+        service.leaveGroup(705L, 9007L);
+
+        assertThat(group.getMembers()).noneMatch(m -> m.getUserId() == 9007L);
+        verify(groupRepository).save(group);
+    }
+
+    @Test
+    void leaveGroup_ownerRejected_notPersisted() {
+        GroupRepository groupRepository = mock(GroupRepository.class);
+        UserRepository userRepository = mock(UserRepository.class);
+        GroupJoinRequestMapper groupJoinRequestMapper = mock(GroupJoinRequestMapper.class);
+        IdGenClient idGenClient = mock(IdGenClient.class);
+        long now = System.currentTimeMillis();
+        Group group = Group.create(706L, "g", 9001L, now, "");
+        when(groupRepository.findById(706L)).thenReturn(Optional.of(group));
+
+        GroupApplicationService service = new GroupApplicationService(
+                groupRepository, userRepository, groupJoinRequestMapper, idGenClient);
+
+        assertThatThrownBy(() -> service.leaveGroup(706L, 9001L)).isInstanceOf(BizException.class);
+        verify(groupRepository, never()).save(any(Group.class));
+    }
+
+    @Test
+    void getMyGroups_returnsAllGroupsUserBelongsTo() {
+        GroupRepository groupRepository = mock(GroupRepository.class);
+        UserRepository userRepository = mock(UserRepository.class);
+        GroupJoinRequestMapper groupJoinRequestMapper = mock(GroupJoinRequestMapper.class);
+        IdGenClient idGenClient = mock(IdGenClient.class);
+        long now = System.currentTimeMillis();
+        Group groupA = Group.create(707L, "a", 9001L, now, "");
+        Group groupB = Group.create(708L, "b", 9002L, now, "");
+        when(groupRepository.findGroupIdsByUserId(9008L)).thenReturn(java.util.List.of(707L, 708L));
+        when(groupRepository.findById(707L)).thenReturn(Optional.of(groupA));
+        when(groupRepository.findById(708L)).thenReturn(Optional.of(groupB));
+
+        GroupApplicationService service = new GroupApplicationService(
+                groupRepository, userRepository, groupJoinRequestMapper, idGenClient);
+        java.util.List<Group> result = service.getMyGroups(9008L);
+
+        assertThat(result).containsExactlyInAnyOrder(groupA, groupB);
+    }
+
+    @Test
+    void getMyGroups_skipsGroupIdsThatNoLongerResolve() {
+        GroupRepository groupRepository = mock(GroupRepository.class);
+        UserRepository userRepository = mock(UserRepository.class);
+        GroupJoinRequestMapper groupJoinRequestMapper = mock(GroupJoinRequestMapper.class);
+        IdGenClient idGenClient = mock(IdGenClient.class);
+        long now = System.currentTimeMillis();
+        Group groupA = Group.create(709L, "a", 9001L, now, "");
+        when(groupRepository.findGroupIdsByUserId(9009L)).thenReturn(java.util.List.of(709L, 710L));
+        when(groupRepository.findById(709L)).thenReturn(Optional.of(groupA));
+        when(groupRepository.findById(710L)).thenReturn(Optional.empty());
+
+        GroupApplicationService service = new GroupApplicationService(
+                groupRepository, userRepository, groupJoinRequestMapper, idGenClient);
+        java.util.List<Group> result = service.getMyGroups(9009L);
+
+        assertThat(result).containsExactly(groupA);
+    }
 }
