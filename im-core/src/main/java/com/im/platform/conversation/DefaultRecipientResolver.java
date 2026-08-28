@@ -33,9 +33,13 @@ public class DefaultRecipientResolver implements RecipientResolver {
 
     @Override
     public List<Long> resolveRecipients(long chatId, long senderId) {
-        Optional<Group> group = groupRepository.findById(chatId);
-        if (group.isPresent()) {
-            return group.get().getMembers().stream()
+        return resolveRecipients(chatId, senderId, groupRepository.findById(chatId));
+    }
+
+    @Override
+    public List<Long> resolveRecipients(long chatId, long senderId, Optional<Group> preResolvedGroup) {
+        if (preResolvedGroup.isPresent()) {
+            return preResolvedGroup.get().getMembers().stream()
                     .map(GroupMember::getUserId)
                     .filter(userId -> userId != senderId)
                     .collect(Collectors.toList());

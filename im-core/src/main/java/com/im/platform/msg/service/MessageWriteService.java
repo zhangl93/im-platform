@@ -1,5 +1,7 @@
 package com.im.platform.msg.service;
 
+import com.im.platform.biz.domain.group.Group;
+import com.im.platform.biz.domain.group.GroupRepository;
 import com.im.platform.common.core.constant.BizType;
 import com.im.platform.common.core.exception.BizException;
 import com.im.platform.common.core.exception.ErrorCode;
@@ -21,6 +23,7 @@ import org.springframework.stereotype.Service;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -49,6 +52,7 @@ public class MessageWriteService {
     private final GroupMuteGuard groupMuteGuard;
     private final SingleChatBlockGuard singleChatBlockGuard;
     private final OfflinePushTriggerService offlinePushTriggerService;
+    private final GroupRepository groupRepository;
 
     public MessageWriteService(MessageStore messageStore,
                                 IdGenClient idGenClient,
@@ -61,7 +65,8 @@ public class MessageWriteService {
                                 MessageMetrics messageMetrics,
                                 GroupMuteGuard groupMuteGuard,
                                 SingleChatBlockGuard singleChatBlockGuard,
-                                OfflinePushTriggerService offlinePushTriggerService) {
+                                OfflinePushTriggerService offlinePushTriggerService,
+                                GroupRepository groupRepository) {
         this.messageStore = messageStore;
         this.idGenClient = idGenClient;
         this.sensitiveWordMatcher = sensitiveWordMatcher;
@@ -74,6 +79,7 @@ public class MessageWriteService {
         this.groupMuteGuard = groupMuteGuard;
         this.singleChatBlockGuard = singleChatBlockGuard;
         this.offlinePushTriggerService = offlinePushTriggerService;
+        this.groupRepository = groupRepository;
     }
 
     public MessageEntity send(long chatId, long senderId, String clientMsgId, byte[] content, int msgType,
@@ -88,8 +94,12 @@ public class MessageWriteService {
             }
         }
 
-        groupMuteGuard.checkNotMuted(chatId, senderId);
-        singleChatBlockGuard.checkNotBlocked(chatId, senderId);
+        // 群禁言检查、拉黑检查、收件人解析都要判断"这个 chat_id 是不是群聊",这里只查一次
+        // GroupRepository,后面三处都复用这个结果,不重复查数据库(三个独立查询会各自再
+        // 拉一遍群的完整成员列表,量级大的群上是可观的浪费)。
+        Optional<Group> group = groupRepository.findById(chatId);
+        groupMuteGuard.checkNotMuted(group, senderId);
+        singleChatBlockGuard.checkNotBlocked(chatId, senderId, group);
 
         String textContent = new String(content, StandardCharsets.UTF_8);
         if (sensitiveWordMatcher.containsSensitiveWord(textContent)) {
@@ -120,7 +130,7 @@ public class MessageWriteService {
         stringRedisTemplate.opsForValue().set(idempotentKey, String.valueOf(messageId),
                 IDEMPOTENT_TTL.toMillis(), TimeUnit.MILLISECONDS);
 
-        List<Long> recipients = recipientResolver.resolveRecipients(chatId, senderId);
+        List<Long> recipients = recipientResolver.resolveRecipients(chatId, senderId, group);
         syncNotifier.onMessageSent(messageId, chatId, senderId, msgType, entity.getServerTime(), recipients);
         callbackInvoker.invoke(new AfterSendMessagePayload(
                 messageId, chatId, senderId, msgType, entity.getServerTime()));

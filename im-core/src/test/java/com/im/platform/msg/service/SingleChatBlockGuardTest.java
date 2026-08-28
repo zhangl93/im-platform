@@ -1,7 +1,6 @@
 package com.im.platform.msg.service;
 
 import com.im.platform.biz.domain.group.Group;
-import com.im.platform.biz.domain.group.GroupRepository;
 import com.im.platform.biz.domain.user.User;
 import com.im.platform.biz.domain.user.UserRepository;
 import com.im.platform.biz.domain.user.UserStatus;
@@ -18,7 +17,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-/** 消息发送链路的拉黑检查,只对单聊生效,群聊不受影响。 */
+/** 消息发送链路的拉黑检查,只对单聊生效,群聊不受影响。是不是群聊由调用方解析好了传进来。 */
 class SingleChatBlockGuardTest {
 
     private static final long SENDER = 1L;
@@ -27,10 +26,8 @@ class SingleChatBlockGuardTest {
 
     @Test
     void singleChat_peerHasBlockedSender_rejected() {
-        GroupRepository groupRepository = mock(GroupRepository.class);
         ConversationMapper conversationMapper = mock(ConversationMapper.class);
         UserRepository userRepository = mock(UserRepository.class);
-        when(groupRepository.findById(CHAT_ID)).thenReturn(Optional.empty());
 
         ConversationEntity conversation = new ConversationEntity();
         conversation.setChatId(CHAT_ID);
@@ -41,16 +38,14 @@ class SingleChatBlockGuardTest {
         User peer = new User(PEER, "peer", "", UserStatus.NORMAL, Set.of(SENDER), "");
         when(userRepository.findById(PEER)).thenReturn(Optional.of(peer));
 
-        SingleChatBlockGuard guard = new SingleChatBlockGuard(groupRepository, conversationMapper, userRepository);
-        assertThatThrownBy(() -> guard.checkNotBlocked(CHAT_ID, SENDER)).isInstanceOf(BizException.class);
+        SingleChatBlockGuard guard = new SingleChatBlockGuard(conversationMapper, userRepository);
+        assertThatThrownBy(() -> guard.checkNotBlocked(CHAT_ID, SENDER, Optional.empty())).isInstanceOf(BizException.class);
     }
 
     @Test
     void singleChat_notBlocked_passes() {
-        GroupRepository groupRepository = mock(GroupRepository.class);
         ConversationMapper conversationMapper = mock(ConversationMapper.class);
         UserRepository userRepository = mock(UserRepository.class);
-        when(groupRepository.findById(CHAT_ID)).thenReturn(Optional.empty());
 
         ConversationEntity conversation = new ConversationEntity();
         conversation.setChatId(CHAT_ID);
@@ -61,31 +56,27 @@ class SingleChatBlockGuardTest {
         User peer = new User(PEER, "peer", "", UserStatus.NORMAL, Set.of(), "");
         when(userRepository.findById(PEER)).thenReturn(Optional.of(peer));
 
-        SingleChatBlockGuard guard = new SingleChatBlockGuard(groupRepository, conversationMapper, userRepository);
-        assertThatCode(() -> guard.checkNotBlocked(CHAT_ID, SENDER)).doesNotThrowAnyException();
+        SingleChatBlockGuard guard = new SingleChatBlockGuard(conversationMapper, userRepository);
+        assertThatCode(() -> guard.checkNotBlocked(CHAT_ID, SENDER, Optional.empty())).doesNotThrowAnyException();
     }
 
     @Test
     void groupChat_blockCheckSkipped_evenIfSomeMemberHasBlockedSender() {
-        GroupRepository groupRepository = mock(GroupRepository.class);
         ConversationMapper conversationMapper = mock(ConversationMapper.class);
         UserRepository userRepository = mock(UserRepository.class);
         Group group = Group.create(CHAT_ID, "g", SENDER, System.currentTimeMillis(), "");
-        when(groupRepository.findById(CHAT_ID)).thenReturn(Optional.of(group));
 
-        SingleChatBlockGuard guard = new SingleChatBlockGuard(groupRepository, conversationMapper, userRepository);
-        assertThatCode(() -> guard.checkNotBlocked(CHAT_ID, SENDER)).doesNotThrowAnyException();
+        SingleChatBlockGuard guard = new SingleChatBlockGuard(conversationMapper, userRepository);
+        assertThatCode(() -> guard.checkNotBlocked(CHAT_ID, SENDER, Optional.of(group))).doesNotThrowAnyException();
     }
 
     @Test
     void unknownChatId_passes() {
-        GroupRepository groupRepository = mock(GroupRepository.class);
         ConversationMapper conversationMapper = mock(ConversationMapper.class);
         UserRepository userRepository = mock(UserRepository.class);
-        when(groupRepository.findById(CHAT_ID)).thenReturn(Optional.empty());
         when(conversationMapper.selectById(CHAT_ID)).thenReturn(null);
 
-        SingleChatBlockGuard guard = new SingleChatBlockGuard(groupRepository, conversationMapper, userRepository);
-        assertThatCode(() -> guard.checkNotBlocked(CHAT_ID, SENDER)).doesNotThrowAnyException();
+        SingleChatBlockGuard guard = new SingleChatBlockGuard(conversationMapper, userRepository);
+        assertThatCode(() -> guard.checkNotBlocked(CHAT_ID, SENDER, Optional.empty())).doesNotThrowAnyException();
     }
 }
