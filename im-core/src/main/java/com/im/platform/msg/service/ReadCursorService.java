@@ -51,8 +51,9 @@ public class ReadCursorService {
         return value == null ? 0L : value;
     }
 
-    /** 未读数 = 已读游标之后 message_id 更大的消息数量。没读过(游标为 0)时等价于这个会话的全部消息。 */
+    /** 未读数 = 已读游标之后、且不是自己发的消息数量。自己刚发出去的消息不该算进自己的未读数——
+     * 没读过(游标为 0)时等价于这个会话里别人发的全部消息。 */
     public long getUnreadCount(long chatId, long userId) {
-        return messageStore.countAfter(chatId, getReadToMessageId(chatId, userId));
+        return messageStore.countAfter(chatId, getReadToMessageId(chatId, userId), userId);
     }
 }

@@ -18,8 +18,9 @@ public interface MessageStore {
 
     List<MessageEntity> pullHistory(long chatId, long beforeMessageId, int limit);
 
-    /** 这个会话里 message_id 大于 afterMessageId 的消息数量,供未读数计算用。 */
-    long countAfter(long chatId, long afterMessageId);
+    /** 这个会话里 message_id 大于 afterMessageId、且不是 excludeSenderId 自己发的消息数量,
+     * 供未读数计算用——查询者自己发的消息不该算进查询者自己的未读数里。 */
+    long countAfter(long chatId, long afterMessageId, long excludeSenderId);
 
     /** 标记一条消息已撤回。不做物理删除——保留记录,pullHistory 按 recalled 标记返回占位。 */
     void markRecalled(long chatId, long messageId);

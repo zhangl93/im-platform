@@ -50,8 +50,9 @@ public class MongoMessageStore implements MessageStore {
     }
 
     @Override
-    public long countAfter(long chatId, long afterMessageId) {
-        Criteria criteria = Criteria.where("chatId").is(chatId).and("messageId").gt(afterMessageId);
+    public long countAfter(long chatId, long afterMessageId, long excludeSenderId) {
+        Criteria criteria = Criteria.where("chatId").is(chatId).and("messageId").gt(afterMessageId)
+                .and("senderId").ne(excludeSenderId);
         return mongoTemplate.count(Query.query(criteria), MessageDocument.class);
     }
 

@@ -63,7 +63,7 @@ class ReadCursorServiceTest {
         RecipientResolver recipientResolver = mock(RecipientResolver.class);
         MessageStore messageStore = mock(MessageStore.class);
         when(readCursorMapper.selectReadToMessageId(9003L, 3001L)).thenReturn(5000L);
-        when(messageStore.countAfter(9003L, 5000L)).thenReturn(7L);
+        when(messageStore.countAfter(9003L, 5000L, 3001L)).thenReturn(7L);
 
         ReadCursorService service = new ReadCursorService(readCursorMapper, updateLogService, recipientResolver, messageStore);
         assertThat(service.getUnreadCount(9003L, 3001L)).isEqualTo(7L);
@@ -76,9 +76,25 @@ class ReadCursorServiceTest {
         RecipientResolver recipientResolver = mock(RecipientResolver.class);
         MessageStore messageStore = mock(MessageStore.class);
         when(readCursorMapper.selectReadToMessageId(9004L, 4001L)).thenReturn(null);
-        when(messageStore.countAfter(9004L, 0L)).thenReturn(12L);
+        when(messageStore.countAfter(9004L, 0L, 4001L)).thenReturn(12L);
 
         ReadCursorService service = new ReadCursorService(readCursorMapper, updateLogService, recipientResolver, messageStore);
         assertThat(service.getUnreadCount(9004L, 4001L)).isEqualTo(12L);
+    }
+
+    @Test
+    void getUnreadCount_excludesQueryingUsersOwnSentMessages() {
+        // 自己刚发出去的消息不该算进自己的未读数——countAfter 第三个参数就是让实现层
+        // 排掉"发送者是自己"的消息,这里断言 excludeSenderId 确实传的是查询者本人。
+        ReadCursorMapper readCursorMapper = mock(ReadCursorMapper.class);
+        UpdateLogService updateLogService = mock(UpdateLogService.class);
+        RecipientResolver recipientResolver = mock(RecipientResolver.class);
+        MessageStore messageStore = mock(MessageStore.class);
+        when(readCursorMapper.selectReadToMessageId(9005L, 5001L)).thenReturn(0L);
+        when(messageStore.countAfter(9005L, 0L, 5001L)).thenReturn(0L);
+
+        ReadCursorService service = new ReadCursorService(readCursorMapper, updateLogService, recipientResolver, messageStore);
+        assertThat(service.getUnreadCount(9005L, 5001L)).isEqualTo(0L);
+        verify(messageStore).countAfter(9005L, 0L, 5001L);
     }
 }
