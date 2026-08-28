@@ -18,6 +18,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -218,7 +219,9 @@ class GroupApplicationServiceTest {
     }
 
     @Test
-    void getMyGroups_returnsAllGroupsUserBelongsTo() {
+    void getMyGroups_delegatesToBatchLookup_notPerGroupFindById() {
+        // 批量查询,不是找到 group_id 列表后逐个调 findById——这正是要修的 N+1,
+        // 断言 findById 一次都没被调用,确保没有退回到旧的逐个查询写法。
         GroupRepository groupRepository = mock(GroupRepository.class);
         UserRepository userRepository = mock(UserRepository.class);
         GroupJoinRequestMapper groupJoinRequestMapper = mock(GroupJoinRequestMapper.class);
@@ -227,33 +230,14 @@ class GroupApplicationServiceTest {
         Group groupA = Group.create(707L, "a", 9001L, now, "");
         Group groupB = Group.create(708L, "b", 9002L, now, "");
         when(groupRepository.findGroupIdsByUserId(9008L)).thenReturn(java.util.List.of(707L, 708L));
-        when(groupRepository.findById(707L)).thenReturn(Optional.of(groupA));
-        when(groupRepository.findById(708L)).thenReturn(Optional.of(groupB));
+        when(groupRepository.findAllByGroupIds(java.util.List.of(707L, 708L))).thenReturn(java.util.List.of(groupA, groupB));
 
         GroupApplicationService service = new GroupApplicationService(
                 groupRepository, userRepository, groupJoinRequestMapper, idGenClient);
         java.util.List<Group> result = service.getMyGroups(9008L);
 
         assertThat(result).containsExactlyInAnyOrder(groupA, groupB);
-    }
-
-    @Test
-    void getMyGroups_skipsGroupIdsThatNoLongerResolve() {
-        GroupRepository groupRepository = mock(GroupRepository.class);
-        UserRepository userRepository = mock(UserRepository.class);
-        GroupJoinRequestMapper groupJoinRequestMapper = mock(GroupJoinRequestMapper.class);
-        IdGenClient idGenClient = mock(IdGenClient.class);
-        long now = System.currentTimeMillis();
-        Group groupA = Group.create(709L, "a", 9001L, now, "");
-        when(groupRepository.findGroupIdsByUserId(9009L)).thenReturn(java.util.List.of(709L, 710L));
-        when(groupRepository.findById(709L)).thenReturn(Optional.of(groupA));
-        when(groupRepository.findById(710L)).thenReturn(Optional.empty());
-
-        GroupApplicationService service = new GroupApplicationService(
-                groupRepository, userRepository, groupJoinRequestMapper, idGenClient);
-        java.util.List<Group> result = service.getMyGroups(9009L);
-
-        assertThat(result).containsExactly(groupA);
+        verify(groupRepository, never()).findById(anyLong());
     }
 
     @Test

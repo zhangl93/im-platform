@@ -21,7 +21,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
-import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
@@ -90,15 +89,11 @@ public class GroupApplicationService {
         groupRepository.save(group);
     }
 
-    /** 这个用户当前所在的全部群,用于客户端"我的群聊"列表。跟 FriendshipApplicationService.getFriends
-     * 同样的取舍:先查出 group_id 列表,再逐个加载完整 Group——群数量级远小于消息量级,不需要为了
-     * 省这几次查询单独设计一个"轻量群摘要"投影。 */
+    /** 这个用户当前所在的全部群,用于客户端"我的群聊"列表。先查出 group_id 列表,再一次性
+     * 批量加载完整 Group(见 GroupRepository.findAllByGroupIds),不逐个 group_id 各查一次
+     * ——群数量级虽然远小于消息量级,但逐个查仍然是不必要的 N+1,批量查询同样简单、成本更低。 */
     public List<Group> getMyGroups(long userId) {
-        return groupRepository.findGroupIdsByUserId(userId).stream()
-                .map(groupRepository::findById)
-                .filter(Optional::isPresent)
-                .map(Optional::get)
-                .collect(Collectors.toList());
+        return groupRepository.findAllByGroupIds(groupRepository.findGroupIdsByUserId(userId));
     }
 
     /** 群成员名单(含每个人的角色、禁言状态),只有群成员本人能看——完整名单比 GroupInfo

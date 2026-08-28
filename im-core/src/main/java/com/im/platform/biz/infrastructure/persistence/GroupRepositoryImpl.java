@@ -13,7 +13,9 @@ import com.im.platform.common.core.constant.BizType;
 import com.im.platform.idgen.IdGenClient;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -40,17 +42,10 @@ public class GroupRepositoryImpl implements GroupRepository {
         List<GroupMember> members = groupMemberMapper.selectList(
                         new LambdaQueryWrapper<GroupMemberPO>().eq(GroupMemberPO::getGroupId, groupId))
                 .stream()
-                .map(m -> new GroupMember(m.getUserId(), GroupRole.valueOf(m.getRole()), m.getJoinedAt(),
-                        m.getMutedUntil() == null ? 0L : m.getMutedUntil(), m.getEx()))
+                .map(GroupRepositoryImpl::toGroupMember)
                 .collect(Collectors.toList());
 
-        GroupPolicy policy = new GroupPolicy(po.getMaxMemberCount() == null
-                ? GroupPolicy.DEFAULT.getMaxMemberCount() : po.getMaxMemberCount());
-        GroupJoinMode joinMode = po.getJoinMode() == null
-                ? GroupJoinMode.OPEN : GroupJoinMode.values()[po.getJoinMode()];
-        boolean groupMuted = Boolean.TRUE.equals(po.getGroupMuted());
-
-        return Optional.of(new Group(po.getGroupId(), po.getGroupName(), policy, members, joinMode, groupMuted, po.getEx()));
+        return Optional.of(toGroup(po, members));
     }
 
     @Override
@@ -60,6 +55,39 @@ public class GroupRepositoryImpl implements GroupRepository {
                 .stream()
                 .map(GroupMemberPO::getGroupId)
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    public List<Group> findAllByGroupIds(List<Long> groupIds) {
+        if (groupIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        List<GroupPO> groupPOs = groupMapper.selectBatchIds(groupIds);
+        Map<Long, List<GroupMember>> membersByGroupId = groupMemberMapper.selectList(
+                        new LambdaQueryWrapper<GroupMemberPO>().in(GroupMemberPO::getGroupId, groupIds))
+                .stream()
+                .collect(Collectors.groupingBy(GroupMemberPO::getGroupId,
+                        Collectors.mapping(GroupRepositoryImpl::toGroupMember, Collectors.toList())));
+
+        return groupPOs.stream()
+                .map(po -> toGroup(po, membersByGroupId.getOrDefault(po.getGroupId(), Collections.emptyList())))
+                .collect(Collectors.toList());
+    }
+
+    private static GroupMember toGroupMember(GroupMemberPO m) {
+        return new GroupMember(m.getUserId(), GroupRole.valueOf(m.getRole()), m.getJoinedAt(),
+                m.getMutedUntil() == null ? 0L : m.getMutedUntil(), m.getEx());
+    }
+
+    private static Group toGroup(GroupPO po, List<GroupMember> members) {
+        GroupPolicy policy = new GroupPolicy(po.getMaxMemberCount() == null
+                ? GroupPolicy.DEFAULT.getMaxMemberCount() : po.getMaxMemberCount());
+        GroupJoinMode joinMode = po.getJoinMode() == null
+                ? GroupJoinMode.OPEN : GroupJoinMode.values()[po.getJoinMode()];
+        boolean groupMuted = Boolean.TRUE.equals(po.getGroupMuted());
+
+        return new Group(po.getGroupId(), po.getGroupName(), policy, members, joinMode, groupMuted, po.getEx());
     }
 
     @Override
